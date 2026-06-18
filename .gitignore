@@ -1,0 +1,17 @@
+build/
+cmake-build-*/
+.qtcreator/
+CMakeLists.txt.user
+*.pro.user
+*.autosave
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+*.ninja
+*.log
+.DS_Store
