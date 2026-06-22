@@ -1,21 +1,25 @@
 #ifndef GRIDDRAGCONTROLLER_H
 #define GRIDDRAGCONTROLLER_H
 
+#include <QObject>
 #include <QPoint>
 #include <QSize>
 
 class QWidget;
 class QScrollArea;
 
-class GridDragController
+class GridDragController : public QObject
 {
+    Q_OBJECT
+    Q_DISABLE_COPY(GridDragController)
+
 public:
     struct DragVisualState {
         QSize normalSize;
         QSize draggedSize;
     };
 
-    GridDragController();
+    explicit GridDragController(QObject *parent = nullptr);
 
     // 绑定滚动环境，供拖拽自动滚动使用。
     void setScrollArea(QScrollArea *scrollArea);

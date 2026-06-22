@@ -1,9 +1,31 @@
+# Build directories
 build/
+build-*/
 cmake-build-*/
+out/
+x64/
+Debug/
+Release/
+
+# IDE and editor settings
+.vscode/
+.idea/
 .qtcreator/
-CMakeLists.txt.user
+*.user
+*.user.*
 *.pro.user
+*.pro.user.*
+CMakeLists.txt.user
 *.autosave
+
+# Visual Studio
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Compiled artifacts
 *.obj
 *.o
 *.pdb
@@ -12,6 +34,19 @@ CMakeLists.txt.user
 *.dll
 *.lib
 *.exp
+
+# Generated files
 *.ninja
 *.log
+*.tmp
+*.cache
+*.ipch
+*.qmake.stash
+compile_commands.json
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Local configuration
+.trae/

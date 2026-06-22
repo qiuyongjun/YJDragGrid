@@ -1,43 +1,39 @@
-#include "YJGridWidget.h"
+#include "DragGridWidget.h"
 
 #include "GridDragController.h"
-#include "YJGridLayout.h"
+#include "DragGridLayout.h"
 
 #include <QCursor>
 #include <QMargins>
 #include <QMouseEvent>
 #include <QTimer>
 #include <QScrollArea>
+#include <QtGlobal>
 
-YJGridWidget::YJGridWidget(QScrollArea *scrollArea, QWidget *parent)
+DragGridWidget::DragGridWidget(QScrollArea *scrollArea, QWidget *parent)
     : QWidget(parent)
 {
-    m_gridLayout = new YJGridLayout(this);
+    m_gridLayout = new DragGridLayout(this);
     setLayout(m_gridLayout);
 
     m_placeholderWidget = new QWidget(this);
-    m_placeholderWidget->setStyleSheet("background-color: rgb(170, 255, 255);");
+    m_placeholderWidget->setObjectName("GridPlaceholder");
     m_placeholderWidget->setVisible(false);
 
     m_scrollTimer = new QTimer(this);
     m_scrollTimer->setInterval(16);
 
-    m_dragController = new GridDragController();
+    m_dragController = new GridDragController(this);
     m_dragController->setScrollArea(scrollArea);
-    connect(m_scrollTimer, &QTimer::timeout, this, &YJGridWidget::slot_scrollTimer_timeOut);
+    connect(m_scrollTimer, &QTimer::timeout, this, &DragGridWidget::slot_scrollTimer_timeOut);
 }
 
-YJGridWidget::~YJGridWidget()
-{
-    delete m_dragController;
-}
-
-void YJGridWidget::addWidget(QWidget *widget)
+void DragGridWidget::addWidget(QWidget *widget)
 {
     insertWidget(count(), widget);
 }
 
-void YJGridWidget::insertWidget(int index, QWidget *widget)
+void DragGridWidget::insertWidget(int index, QWidget *widget)
 {
     if (!widget || indexOfWidget(widget) != -1) {
         return;
@@ -48,7 +44,7 @@ void YJGridWidget::insertWidget(int index, QWidget *widget)
     updateGeometry();
 }
 
-void YJGridWidget::removeWidget(QWidget *widget)
+void DragGridWidget::removeWidget(QWidget *widget)
 {
     QWidget *targetWidget = takeWidget(indexOfWidget(widget));
     if (!targetWidget) {
@@ -58,7 +54,7 @@ void YJGridWidget::removeWidget(QWidget *widget)
     updateGeometry();
 }
 
-void YJGridWidget::deleteWidget(QWidget *widget)
+void DragGridWidget::deleteWidget(QWidget *widget)
 {
     QWidget *targetWidget = takeWidget(indexOfWidget(widget));
     if (!targetWidget) {
@@ -69,7 +65,7 @@ void YJGridWidget::deleteWidget(QWidget *widget)
     updateGeometry();
 }
 
-QWidget *YJGridWidget::takeWidget(int index)
+QWidget *DragGridWidget::takeWidget(int index)
 {
     QWidget *targetWidget = m_gridLayout->takeWidget(index);
     if (!targetWidget) {
@@ -86,7 +82,7 @@ QWidget *YJGridWidget::takeWidget(int index)
     return targetWidget;
 }
 
-void YJGridWidget::clear()
+void DragGridWidget::clear()
 {
     while (count() > 0) {
         QWidget *widget = takeWidget(0);
@@ -98,93 +94,39 @@ void YJGridWidget::clear()
     updateGeometry();
 }
 
-int YJGridWidget::getColumnMaxNum() const
-{
-    return columnCount();
-}
-
-int YJGridWidget::columnCount() const
+int DragGridWidget::columnCount() const
 {
     return m_gridLayout->columnCount();
 }
 
-int YJGridWidget::count() const
+int DragGridWidget::count() const
 {
     return m_gridLayout->count();
 }
 
-QList<QWidget *> YJGridWidget::widgets() const
+QList<QWidget *> DragGridWidget::widgets() const
 {
     return m_gridLayout->widgets();
 }
 
-void YJGridWidget::setColumnMaxNum(int columnMaxNum)
-{
-    setColumnCount(columnMaxNum);
-}
-
-void YJGridWidget::setColumnCount(int columnCount)
+void DragGridWidget::setColumnCount(int columnCount)
 {
     m_gridLayout->setColumnCount(columnCount);
     updateGeometry();
 }
 
-QSize YJGridWidget::minimumCellSize() const
+QSize DragGridWidget::minimumCellSize() const
 {
     return m_gridLayout->minimumCellSize();
 }
 
-void YJGridWidget::setMinimumCellSize(const QSize &size)
+void DragGridWidget::setMinimumCellSize(const QSize &size)
 {
     m_gridLayout->setMinimumCellSize(size);
     updateGeometry();
 }
 
-int YJGridWidget::getCellMiniWidth() const
-{
-    return minimumCellWidth();
-}
-
-int YJGridWidget::minimumCellWidth() const
-{
-    return minimumCellSize().width();
-}
-
-void YJGridWidget::setCellMiniWidth(int cellMiniWidth)
-{
-    setMinimumCellWidth(cellMiniWidth);
-}
-
-void YJGridWidget::setMinimumCellWidth(int cellMiniWidth)
-{
-    QSize size = minimumCellSize();
-    size.setWidth(qMax(1, cellMiniWidth));
-    setMinimumCellSize(size);
-}
-
-int YJGridWidget::getCellMiniHeight() const
-{
-    return minimumCellHeight();
-}
-
-int YJGridWidget::minimumCellHeight() const
-{
-    return minimumCellSize().height();
-}
-
-void YJGridWidget::setCellMiniHeight(int cellMiniHeight)
-{
-    setMinimumCellHeight(cellMiniHeight);
-}
-
-void YJGridWidget::setMinimumCellHeight(int cellMiniHeight)
-{
-    QSize size = minimumCellSize();
-    size.setHeight(qMax(1, cellMiniHeight));
-    setMinimumCellSize(size);
-}
-
-void YJGridWidget::setDragEnabled(bool enable)
+void DragGridWidget::setDragEnabled(bool enable)
 {
     if (!enable && m_dragController->isDragging()) {
         finishDrag();
@@ -193,34 +135,34 @@ void YJGridWidget::setDragEnabled(bool enable)
     m_dragEnable = enable;
 }
 
-bool YJGridWidget::dragEnabled() const
+bool DragGridWidget::dragEnabled() const
 {
     return m_dragEnable;
 }
 
-void YJGridWidget::setEqualCellSizeEnabled(bool enable)
+void DragGridWidget::setEqualCellSizeEnabled(bool enable)
 {
     m_gridLayout->setEqualCellSizeEnabled(enable);
     updateGeometry();
 }
 
-bool YJGridWidget::equalCellSizeEnabled() const
+bool DragGridWidget::equalCellSizeEnabled() const
 {
     return m_gridLayout->equalCellSizeEnabled();
 }
 
-void YJGridWidget::setExpandedCellEnabled(bool enable)
+void DragGridWidget::setCompactWhenSparseEnabled(bool enable)
 {
     m_gridLayout->setCompactWhenSparseEnabled(enable);
     updateGeometry();
 }
 
-bool YJGridWidget::expandedCellEnabled() const
+bool DragGridWidget::compactWhenSparseEnabled() const
 {
     return m_gridLayout->compactWhenSparseEnabled();
 }
 
-void YJGridWidget::mousePressEvent(QMouseEvent *event)
+void DragGridWidget::mousePressEvent(QMouseEvent *event)
 {
     if (!m_dragEnable || event->button() != Qt::LeftButton) {
         QWidget::mousePressEvent(event);
@@ -239,7 +181,11 @@ void YJGridWidget::mousePressEvent(QMouseEvent *event)
                                         QSize(qMax(1, static_cast<int>(widget->width() * 1.1)),
                                               qMax(1, static_cast<int>(widget->height() * 1.1)))
                                     });
+        m_dragController->updatePlaceholderIndex(indexOfWidget(widget));
         m_gridLayout->setIgnoredWidget(widget);
+        m_gridLayout->setPlaceholderIndex(indexOfWidget(widget));
+        m_gridLayout->activate();
+        updatePlaceholder();
         grabMouse();
         m_scrollTimer->start();
         event->accept();
@@ -249,42 +195,29 @@ void YJGridWidget::mousePressEvent(QMouseEvent *event)
     QWidget::mousePressEvent(event);
 }
 
-void YJGridWidget::mouseMoveEvent(QMouseEvent *event)
+void DragGridWidget::mouseMoveEvent(QMouseEvent *event)
 {
     if (!m_dragEnable || !m_dragController->isDragging()) {
         QWidget::mouseMoveEvent(event);
         return;
     }
 
-    const QPoint widgetPos = mapFromGlobal(QCursor::pos()) - m_dragController->dragPointOffset();
+    const QPoint cursorPos = mapFromGlobal(QCursor::pos());
+    const QPoint widgetPos = cursorPos - m_dragController->dragPointOffset();
     m_dragController->updateDragPosition(widgetPos);
 
-    m_gridLayout->activate();
-    const QRect contentRect = layoutContentsRect();
-    const QRect firstCellRect = m_gridLayout->cellRectForIndex(0, contentRect);
-    QSize cellSize = firstCellRect.size();
-    if (!cellSize.isValid() || cellSize.isEmpty()) {
-        cellSize = m_gridLayout->minimumCellSize();
-    }
-    const int placeholderIndex = m_dragController->calculatePlaceholderIndex(widgetPos,
-                                                                             cellSize,
-                                                                             contentRect.topLeft(),
-                                                                             m_gridLayout->spacing(),
-                                                                             m_gridLayout->effectiveColumnCount(),
-                                                                             m_gridLayout->count());
+    const int placeholderIndex = placeholderIndexAt(cursorPos);
     if (placeholderIndex != m_dragController->placeholderIndex()) {
         m_dragController->updatePlaceholderIndex(placeholderIndex);
-        if (reorderForPlaceholder()) {
-            emit orderChanged();
-            m_gridLayout->activate();
-        }
+        m_gridLayout->setPlaceholderIndex(placeholderIndex);
+        m_gridLayout->activate();
         updatePlaceholder();
     }
 
     event->accept();
 }
 
-void YJGridWidget::mouseReleaseEvent(QMouseEvent *event)
+void DragGridWidget::mouseReleaseEvent(QMouseEvent *event)
 {
     if (!m_dragController->isDragging()) {
         QWidget::mouseReleaseEvent(event);
@@ -296,17 +229,41 @@ void YJGridWidget::mouseReleaseEvent(QMouseEvent *event)
     event->accept();
 }
 
-void YJGridWidget::slot_scrollTimer_timeOut()
+void DragGridWidget::slot_scrollTimer_timeOut()
 {
     m_dragController->autoScroll();
 }
 
-int YJGridWidget::indexOfWidget(const QWidget *widget) const
+int DragGridWidget::indexOfWidget(const QWidget *widget) const
 {
-    return m_gridLayout->indexOf(const_cast<QWidget *>(widget));
+    return m_gridLayout->indexOf(widget);
 }
 
-bool YJGridWidget::reorderForPlaceholder()
+int DragGridWidget::placeholderIndexAt(const QPoint &pos) const
+{
+    if (count() <= 0) {
+        return -1;
+    }
+
+    const QRect contentRect = layoutContentsRect();
+    const QRect firstCellRect = m_gridLayout->cellRectForIndex(0, contentRect);
+    QSize cellSize = firstCellRect.size();
+    if (!cellSize.isValid() || cellSize.isEmpty()) {
+        cellSize = m_gridLayout->minimumCellSize();
+    }
+
+    const int columns = qMax(1, m_gridLayout->effectiveColumnCount());
+    const int spacing = qMax(0, m_gridLayout->spacing());
+    const int stepWidth = qMax(1, cellSize.width() + spacing);
+    const int stepHeight = qMax(1, cellSize.height() + spacing);
+    const QPoint localPos = pos - contentRect.topLeft();
+    const int row = qMax(0, localPos.y() / stepHeight);
+    const int column = qBound(0, localPos.x() / stepWidth, columns - 1);
+
+    return qBound(0, row * columns + column, count() - 1);
+}
+
+bool DragGridWidget::reorderForPlaceholder()
 {
     QWidget *draggedWidget = m_dragController->draggedWidget();
     if (!draggedWidget) {
@@ -318,7 +275,7 @@ bool YJGridWidget::reorderForPlaceholder()
     return m_gridLayout->moveItem(from, to);
 }
 
-void YJGridWidget::finishDrag()
+void DragGridWidget::finishDrag()
 {
     if (!m_dragController->isDragging()) {
         m_scrollTimer->stop();
@@ -327,15 +284,20 @@ void YJGridWidget::finishDrag()
     }
 
     m_scrollTimer->stop();
+    const bool hasOrderChanged = reorderForPlaceholder();
     m_gridLayout->setIgnoredWidget(nullptr);
+    m_gridLayout->setPlaceholderIndex(-1);
     m_dragController->endDrag();
     m_placeholderWidget->hide();
     if (mouseGrabber() == this) {
         releaseMouse();
     }
+    if (hasOrderChanged) {
+        emit orderChanged();
+    }
 }
 
-void YJGridWidget::updatePlaceholder()
+void DragGridWidget::updatePlaceholder()
 {
     const int index = m_dragController->placeholderIndex();
     if (index < 0 || count() == 0) {
@@ -343,13 +305,21 @@ void YJGridWidget::updatePlaceholder()
         return;
     }
 
-    m_placeholderWidget->setGeometry(m_gridLayout->cellRectForIndex(index, layoutContentsRect()));
+    const QRect placeholderRect = m_gridLayout->cellRectForIndex(index, layoutContentsRect());
+    if (!placeholderRect.isValid()) {
+        m_placeholderWidget->hide();
+        return;
+    }
+
+    m_placeholderWidget->setGeometry(placeholderRect);
     m_placeholderWidget->show();
     m_placeholderWidget->lower();
 }
 
-QRect YJGridWidget::layoutContentsRect() const
+QRect DragGridWidget::layoutContentsRect() const
 {
     const QMargins margins = m_gridLayout->contentsMargins();
     return rect().adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom());
 }
+
+

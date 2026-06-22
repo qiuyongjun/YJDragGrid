@@ -3,10 +3,14 @@
 #include <QCursor>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QStyle>
 #include <QWidget>
 #include <QtGlobal>
 
-GridDragController::GridDragController() = default;
+GridDragController::GridDragController(QObject *parent)
+    : QObject(parent)
+{
+}
 
 void GridDragController::setScrollArea(QScrollArea *scrollArea)
 {
@@ -30,6 +34,10 @@ void GridDragController::beginDrag(QWidget *widget,
     widget->raise();
     widget->resize(qMax(visualState.draggedSize.width(), 1),
                    qMax(visualState.draggedSize.height(), 1));
+
+    widget->setProperty("drawing", true);
+    widget->style()->unpolish(widget);
+    widget->style()->polish(widget);
 }
 
 void GridDragController::updateDragPosition(const QPoint &widgetPos)
@@ -55,6 +63,11 @@ void GridDragController::endDrag()
     m_draggedWidget->setWindowOpacity(1.0);
     m_draggedWidget->resize(qMax(m_visualState.normalSize.width(), 1),
                             qMax(m_visualState.normalSize.height(), 1));
+
+    m_draggedWidget->setProperty("drawing", false);
+    m_draggedWidget->style()->unpolish(m_draggedWidget);
+    m_draggedWidget->style()->polish(m_draggedWidget);
+
     m_draggedWidget = nullptr;
     m_dragPointOffset = QPoint();
     m_placeholderIndex = -1;
@@ -145,3 +158,4 @@ GridDragController::DragVisualState GridDragController::visualState() const
 {
     return m_visualState;
 }
+

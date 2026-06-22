@@ -1,4 +1,4 @@
-#include "YJGridLayout.h"
+#include "DragGridLayout.h"
 
 #include <QLayoutItem>
 #include <QMargins>
@@ -7,12 +7,12 @@
 #include <QWidgetItem>
 #include <QtGlobal>
 
-YJGridLayout::YJGridLayout(QWidget *parent)
+DragGridLayout::DragGridLayout(QWidget *parent)
     : QLayout(parent)
 {
 }
 
-YJGridLayout::~YJGridLayout()
+DragGridLayout::~DragGridLayout()
 {
     QLayoutItem *item = nullptr;
     while ((item = takeAt(0)) != nullptr) {
@@ -20,22 +20,28 @@ YJGridLayout::~YJGridLayout()
     }
 }
 
-void YJGridLayout::addItem(QLayoutItem *item)
+void DragGridLayout::invalidate()
+{
+    m_minCellSizeDirty = true;
+    QLayout::invalidate();
+}
+
+void DragGridLayout::addItem(QLayoutItem *item)
 {
     if (!item) {
         return;
     }
 
-    m_items.append({item, {}});
+    m_items.append(Item{item, {}});
     invalidate();
 }
 
-void YJGridLayout::addWidget(QWidget *widget, Qt::Alignment alignment)
+void DragGridLayout::addWidget(QWidget *widget, Qt::Alignment alignment)
 {
     insertWidget(m_items.size(), widget, alignment);
 }
 
-void YJGridLayout::insertWidget(int index, QWidget *widget, Qt::Alignment alignment)
+void DragGridLayout::insertWidget(int index, QWidget *widget, Qt::Alignment alignment)
 {
     if (!widget || indexOf(widget) != -1) {
         return;
@@ -43,11 +49,11 @@ void YJGridLayout::insertWidget(int index, QWidget *widget, Qt::Alignment alignm
 
     addChildWidget(widget);
     auto *item = new QWidgetItem(widget);
-    m_items.insert(clampedInsertIndex(index), {item, alignment});
+    m_items.insert(clampedInsertIndex(index), Item{item, alignment});
     invalidate();
 }
 
-QLayoutItem *YJGridLayout::itemAt(int index) const
+QLayoutItem *DragGridLayout::itemAt(int index) const
 {
     if (index < 0 || index >= m_items.size()) {
         return nullptr;
@@ -56,7 +62,7 @@ QLayoutItem *YJGridLayout::itemAt(int index) const
     return m_items[index].layoutItem;
 }
 
-QLayoutItem *YJGridLayout::takeAt(int index)
+QLayoutItem *DragGridLayout::takeAt(int index)
 {
     if (index < 0 || index >= m_items.size()) {
         return nullptr;
@@ -67,12 +73,12 @@ QLayoutItem *YJGridLayout::takeAt(int index)
     return item.layoutItem;
 }
 
-int YJGridLayout::count() const
+int DragGridLayout::count() const
 {
     return m_items.size();
 }
 
-void YJGridLayout::setGeometry(const QRect &rect)
+void DragGridLayout::setGeometry(const QRect &rect)
 {
     QLayout::setGeometry(rect);
 
@@ -82,7 +88,9 @@ void YJGridLayout::setGeometry(const QRect &rect)
 
     const QMargins margins = contentsMargins();
     const QRect contentRect = rect.adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom());
+    const int columns = effectiveColumnCount();
     const QSize cellSize = effectiveCellSize(contentRect);
+    int visualIndex = 0;
 
     for (int index = 0; index < m_items.size(); ++index) {
         QLayoutItem *item = m_items[index].layoutItem;
@@ -93,26 +101,31 @@ void YJGridLayout::setGeometry(const QRect &rect)
             continue;
         }
 
-        QRect cellRect = cellRectForIndex(index, contentRect);
-        QRect itemRect = cellRect;
+        if (visualIndex == m_placeholderIndex) {
+            ++visualIndex;
+        }
+
+        QRect cell = cellRect(visualIndex, contentRect, columns, cellSize);
+        ++visualIndex;
+        QRect itemRect = cell;
         if (m_items[index].alignment) {
             itemRect.setSize(expandedSizeForItem(m_items[index], cellSize));
             itemRect = QStyle::alignedRect(Qt::LeftToRight,
                                            m_items[index].alignment,
                                            itemRect.size(),
-                                           cellRect);
+                                           cell);
         }
 
         item->setGeometry(itemRect);
     }
 }
 
-QSize YJGridLayout::sizeHint() const
+QSize DragGridLayout::sizeHint() const
 {
     return minimumSize();
 }
 
-QSize YJGridLayout::minimumSize() const
+QSize DragGridLayout::minimumSize() const
 {
     if (m_items.isEmpty()) {
         const QMargins margins = contentsMargins();
@@ -131,12 +144,12 @@ QSize YJGridLayout::minimumSize() const
                  rows * cellSize.height() + spacingY + margins.top() + margins.bottom());
 }
 
-bool YJGridLayout::hasHeightForWidth() const
+bool DragGridLayout::hasHeightForWidth() const
 {
     return true;
 }
 
-int YJGridLayout::heightForWidth(int width) const
+int DragGridLayout::heightForWidth(int width) const
 {
     if (m_items.isEmpty()) {
         const QMargins margins = contentsMargins();
@@ -150,17 +163,17 @@ int YJGridLayout::heightForWidth(int width) const
     return rows * cellSize.height() + qMax(0, rows - 1) * qMax(0, spacing()) + margins.top() + margins.bottom();
 }
 
-Qt::Orientations YJGridLayout::expandingDirections() const
+Qt::Orientations DragGridLayout::expandingDirections() const
 {
     return Qt::Horizontal;
 }
 
-int YJGridLayout::columnCount() const
+int DragGridLayout::columnCount() const
 {
     return m_columnCount;
 }
 
-void YJGridLayout::setColumnCount(int columnCount)
+void DragGridLayout::setColumnCount(int columnCount)
 {
     const int safeColumnCount = qMax(1, columnCount);
     if (m_columnCount == safeColumnCount) {
@@ -171,12 +184,12 @@ void YJGridLayout::setColumnCount(int columnCount)
     invalidate();
 }
 
-QSize YJGridLayout::minimumCellSize() const
+QSize DragGridLayout::minimumCellSize() const
 {
     return m_minimumCellSize;
 }
 
-void YJGridLayout::setMinimumCellSize(const QSize &size)
+void DragGridLayout::setMinimumCellSize(const QSize &size)
 {
     const QSize safeSize(qMax(1, size.width()), qMax(1, size.height()));
     if (m_minimumCellSize == safeSize) {
@@ -187,12 +200,12 @@ void YJGridLayout::setMinimumCellSize(const QSize &size)
     invalidate();
 }
 
-bool YJGridLayout::equalCellSizeEnabled() const
+bool DragGridLayout::equalCellSizeEnabled() const
 {
     return m_equalCellSizeEnabled;
 }
 
-void YJGridLayout::setEqualCellSizeEnabled(bool enable)
+void DragGridLayout::setEqualCellSizeEnabled(bool enable)
 {
     if (m_equalCellSizeEnabled == enable) {
         return;
@@ -202,12 +215,12 @@ void YJGridLayout::setEqualCellSizeEnabled(bool enable)
     invalidate();
 }
 
-bool YJGridLayout::compactWhenSparseEnabled() const
+bool DragGridLayout::compactWhenSparseEnabled() const
 {
     return m_compactWhenSparseEnabled;
 }
 
-void YJGridLayout::setCompactWhenSparseEnabled(bool enable)
+void DragGridLayout::setCompactWhenSparseEnabled(bool enable)
 {
     if (m_compactWhenSparseEnabled == enable) {
         return;
@@ -217,7 +230,7 @@ void YJGridLayout::setCompactWhenSparseEnabled(bool enable)
     invalidate();
 }
 
-QList<QWidget *> YJGridLayout::widgets() const
+QList<QWidget *> DragGridLayout::widgets() const
 {
     QList<QWidget *> result;
     result.reserve(m_items.size());
@@ -229,7 +242,7 @@ QList<QWidget *> YJGridLayout::widgets() const
     return result;
 }
 
-int YJGridLayout::indexOf(QWidget *widget) const
+int DragGridLayout::indexOf(const QWidget *widget) const
 {
     if (!widget) {
         return -1;
@@ -243,7 +256,7 @@ int YJGridLayout::indexOf(QWidget *widget) const
     return -1;
 }
 
-QWidget *YJGridLayout::takeWidget(int index)
+QWidget *DragGridLayout::takeWidget(int index)
 {
     QLayoutItem *item = takeAt(index);
     if (!item) {
@@ -255,24 +268,24 @@ QWidget *YJGridLayout::takeWidget(int index)
     return widget;
 }
 
-bool YJGridLayout::moveItem(int from, int to)
+bool DragGridLayout::moveItem(int from, int to)
 {
     if (from < 0 || from >= m_items.size()) {
         return false;
     }
 
-    const int targetIndex = qBound(0, to, m_items.size() - 1);
+    const int targetIndex = qBound(0, to, m_items.size());
     if (from == targetIndex) {
         return false;
     }
 
     Item item = m_items.takeAt(from);
-    m_items.insert(targetIndex, item);
+    m_items.insert(qBound(0, targetIndex, m_items.size()), item);
     invalidate();
     return true;
 }
 
-QRect YJGridLayout::cellRectForIndex(int index, const QRect &contentRect) const
+QRect DragGridLayout::cellRectForIndex(int index, const QRect &contentRect) const
 {
     if (index < 0 || m_items.isEmpty()) {
         return QRect();
@@ -283,16 +296,10 @@ QRect YJGridLayout::cellRectForIndex(int index, const QRect &contentRect) const
         return QRect();
     }
 
-    const QSize cellSize = effectiveCellSize(contentRect);
-    const int col = index % columns;
-    const int row = index / columns;
-    const int layoutSpacing = qMax(0, spacing());
-    const int x = contentRect.x() + col * (cellSize.width() + layoutSpacing);
-    const int y = contentRect.y() + row * (cellSize.height() + layoutSpacing);
-    return QRect(x, y, cellSize.width(), cellSize.height());
+    return cellRect(index, contentRect, columns, effectiveCellSize(contentRect));
 }
 
-int YJGridLayout::effectiveColumnCount() const
+int DragGridLayout::effectiveColumnCount() const
 {
     if (m_items.isEmpty()) {
         return 0;
@@ -305,12 +312,12 @@ int YJGridLayout::effectiveColumnCount() const
     return qMax(1, m_columnCount);
 }
 
-QWidget *YJGridLayout::ignoredWidget() const
+QWidget *DragGridLayout::ignoredWidget() const
 {
     return m_ignoredWidget;
 }
 
-void YJGridLayout::setIgnoredWidget(QWidget *widget)
+void DragGridLayout::setIgnoredWidget(QWidget *widget)
 {
     if (m_ignoredWidget == widget) {
         return;
@@ -320,7 +327,23 @@ void YJGridLayout::setIgnoredWidget(QWidget *widget)
     invalidate();
 }
 
-QSize YJGridLayout::effectiveCellSize(const QRect &contentRect) const
+int DragGridLayout::placeholderIndex() const
+{
+    return m_placeholderIndex;
+}
+
+void DragGridLayout::setPlaceholderIndex(int index)
+{
+    const int safeIndex = qBound(-1, index, m_items.size() - 1);
+    if (m_placeholderIndex == safeIndex) {
+        return;
+    }
+
+    m_placeholderIndex = safeIndex;
+    invalidate();
+}
+
+QSize DragGridLayout::effectiveCellSize(const QRect &contentRect) const
 {
     QSize cellSize = minimumCellSizeForItems();
     const int columns = effectiveColumnCount();
@@ -335,18 +358,25 @@ QSize YJGridLayout::effectiveCellSize(const QRect &contentRect) const
     return cellSize;
 }
 
-QSize YJGridLayout::minimumCellSizeForItems() const
+QSize DragGridLayout::minimumCellSizeForItems() const
 {
+    if (!m_minCellSizeDirty) {
+        return m_cachedMinCellSize;
+    }
+
     QSize cellSize = m_minimumCellSize;
     for (const Item &item : m_items) {
         if (item.layoutItem) {
             cellSize = cellSize.expandedTo(item.layoutItem->minimumSize());
         }
     }
+
+    m_cachedMinCellSize = cellSize;
+    m_minCellSizeDirty = false;
     return cellSize;
 }
 
-int YJGridLayout::minimumColumnCount() const
+int DragGridLayout::minimumColumnCount() const
 {
     if (m_items.isEmpty()) {
         return 0;
@@ -355,7 +385,7 @@ int YJGridLayout::minimumColumnCount() const
     return qMax(1, qMin(m_columnCount, m_items.size()));
 }
 
-int YJGridLayout::rowCount() const
+int DragGridLayout::rowCount() const
 {
     if (m_items.isEmpty()) {
         return 0;
@@ -369,7 +399,7 @@ int YJGridLayout::rowCount() const
     return (m_items.size() + columns - 1) / columns;
 }
 
-QSize YJGridLayout::expandedSizeForItem(const Item &item, const QSize &cellSize) const
+QSize DragGridLayout::expandedSizeForItem(const Item &item, const QSize &cellSize) const
 {
     if (!item.layoutItem) {
         return cellSize;
@@ -380,7 +410,23 @@ QSize YJGridLayout::expandedSizeForItem(const Item &item, const QSize &cellSize)
     return itemSize.boundedTo(cellSize);
 }
 
-int YJGridLayout::clampedInsertIndex(int index) const
+int DragGridLayout::clampedInsertIndex(int index) const
 {
     return qBound(0, index, m_items.size());
 }
+
+QRect DragGridLayout::cellRect(int index, const QRect &contentRect, int columns, const QSize &cellSize) const
+{
+    if (columns <= 0 || cellSize.isEmpty()) {
+        return QRect();
+    }
+
+    const int col = index % columns;
+    const int row = index / columns;
+    const int layoutSpacing = qMax(0, spacing());
+    const int x = contentRect.x() + col * (cellSize.width() + layoutSpacing);
+    const int y = contentRect.y() + row * (cellSize.height() + layoutSpacing);
+    return QRect(x, y, cellSize.width(), cellSize.height());
+}
+
+

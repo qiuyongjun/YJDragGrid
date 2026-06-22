@@ -1,23 +1,24 @@
-#ifndef YJGRIDWIDGET_H
-#define YJGRIDWIDGET_H
+#ifndef DRAGGRIDWIDGET_H
+#define DRAGGRIDWIDGET_H
 
 #include <QList>
 #include <QSize>
 #include <QWidget>
 
-class GridDragController;
 class QMouseEvent;
 class QScrollArea;
 class QTimer;
-class YJGridLayout;
+class DragGridLayout;
 
-class YJGridWidget : public QWidget
+class GridDragController;
+
+class DragGridWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit YJGridWidget(QScrollArea *scrollArea = nullptr, QWidget *parent = nullptr);
-    ~YJGridWidget() override;
+    explicit DragGridWidget(QScrollArea *scrollArea = nullptr, QWidget *parent = nullptr);
+    ~DragGridWidget() override = default;
 
     // 添加控件并纳入网格布局管理。
     void addWidget(QWidget *widget);
@@ -32,38 +33,21 @@ public:
     // 清空并销毁所有控件。
     void clear();
 
-    // 兼容旧接口，建议使用 columnCount()。
-    int getColumnMaxNum() const;
     int columnCount() const;
+    void setColumnCount(int columnCount);
     int count() const;
     QList<QWidget *> widgets() const;
-    // 兼容旧接口，建议使用 setColumnCount()。
-    void setColumnMaxNum(int columnMaxNum);
-    void setColumnCount(int columnCount);
 
     QSize minimumCellSize() const;
     void setMinimumCellSize(const QSize &size);
-
-    // 兼容旧接口，建议使用 minimumCellSize()。
-    int getCellMiniWidth() const;
-    int minimumCellWidth() const;
-    void setCellMiniWidth(int cellMiniWidth);
-    void setMinimumCellWidth(int cellMiniWidth);
-
-    // 兼容旧接口，建议使用 minimumCellSize()。
-    int getCellMiniHeight() const;
-    int minimumCellHeight() const;
-    void setCellMiniHeight(int cellMiniHeight);
-    void setMinimumCellHeight(int cellMiniHeight);
 
     void setDragEnabled(bool enable);
     bool dragEnabled() const;
 
     void setEqualCellSizeEnabled(bool enable);
     bool equalCellSizeEnabled() const;
-    // 兼容旧接口。
-    void setExpandedCellEnabled(bool enable);
-    bool expandedCellEnabled() const;
+    void setCompactWhenSparseEnabled(bool enable);
+    bool compactWhenSparseEnabled() const;
 
 signals:
     void orderChanged();
@@ -78,13 +62,14 @@ private slots:
 
 private:
     int indexOfWidget(const QWidget *widget) const;
+    int placeholderIndexAt(const QPoint &pos) const;
     bool reorderForPlaceholder();
     void finishDrag();
     void updatePlaceholder();
     QRect layoutContentsRect() const;
 
 private:
-    YJGridLayout *m_gridLayout = nullptr;
+    DragGridLayout *m_gridLayout = nullptr;
     QWidget *m_placeholderWidget = nullptr;
     QTimer *m_scrollTimer = nullptr;
     GridDragController *m_dragController = nullptr;
@@ -92,4 +77,4 @@ private:
     bool m_dragEnable = false;
 };
 
-#endif // YJGRIDWIDGET_H
+#endif // DRAGGRIDWIDGET_H

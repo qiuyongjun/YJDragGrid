@@ -1,0 +1,110 @@
+/* 主窗口背景 */
+QMainWindow {
+    background-color: #f5f6fa;
+}
+
+/* 滚动区域 */
+QScrollArea {
+    border: none;
+    background-color: #f5f6fa;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: #f5f6fa;
+}
+
+/* 卡片基础样式 */
+CardWidget {
+    background-color: #ffffff;
+    border: 1px solid #e1e4e8;
+    border-radius: 12px;
+    padding: 12px;
+}
+
+/* 卡片悬浮态 */
+CardWidget:hover {
+    border: 1px solid #c9cdd4;
+    background-color: #fafbfc;
+}
+
+/* 卡片拖拽态 */
+CardWidget[drawing="true"] {
+    border: 2px solid #4a90e2;
+    background-color: #f0f7ff;
+}
+
+/* 拖拽占位符 */
+#GridPlaceholder {
+    background-color: rgba(74, 144, 226, 0.15);
+    border: 2px dashed #4a90e2;
+    border-radius: 12px;
+}
+
+/* 标签 */
+QLabel {
+    color: #3c4043;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* 关闭按钮 */
+QPushButton {
+    background-color: #f5f6fa;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    color: #5f6368;
+    padding: 6px 12px;
+}
+
+QPushButton:hover {
+    background-color: #e8eaed;
+    border: 1px solid #d1d5db;
+}
+
+QPushButton:pressed {
+    background-color: #dadce0;
+}
+
+/* 垂直滚动条 */
+QScrollBar:vertical {
+    background: #f5f6fa;
+    width: 8px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: #c9cdd4;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #a8adb4;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+/* 水平滚动条 */
+QScrollBar:horizontal {
+    background: #f5f6fa;
+    height: 8px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #c9cdd4;
+    border-radius: 4px;
+    min-width: 30px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #a8adb4;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
