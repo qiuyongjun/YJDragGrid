@@ -27,17 +27,18 @@ CardWidget:hover {
     background-color: #fafbfc;
 }
 
-/* 卡片拖拽态 */
-CardWidget[drawing="true"] {
-    border: 2px solid #4a90e2;
-    background-color: #f0f7ff;
-}
-
 /* 拖拽占位符 */
 #GridPlaceholder {
     background-color: rgba(74, 144, 226, 0.15);
     border: 2px dashed #4a90e2;
     border-radius: 12px;
+}
+
+/* 空状态提示 */
+#GridEmptyState {
+    color: #8b949e;
+    font-size: 16px;
+    background: transparent;
 }
 
 /* 标签 */

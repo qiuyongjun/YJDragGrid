@@ -2,6 +2,7 @@
 
 #include <QLayoutItem>
 #include <QMargins>
+#include <QPropertyAnimation>
 #include <QStyle>
 #include <QWidget>
 #include <QWidgetItem>
@@ -69,6 +70,9 @@ QLayoutItem *DragGridLayout::takeAt(int index)
     }
 
     Item item = m_items.takeAt(index);
+    if (item.layoutItem && item.layoutItem->widget()) {
+        stopAnimationForWidget(item.layoutItem->widget());
+    }
     invalidate();
     return item.layoutItem;
 }
@@ -97,7 +101,9 @@ void DragGridLayout::setGeometry(const QRect &rect)
         if (!item) {
             continue;
         }
-        if (item->widget() == m_ignoredWidget) {
+
+        QWidget *widget = item->widget();
+        if (widget == m_ignoredWidget) {
             continue;
         }
 
@@ -116,7 +122,7 @@ void DragGridLayout::setGeometry(const QRect &rect)
                                            cell);
         }
 
-        item->setGeometry(itemRect);
+        setWidgetGeometryAnimated(widget, itemRect);
     }
 }
 
@@ -427,6 +433,111 @@ QRect DragGridLayout::cellRect(int index, const QRect &contentRect, int columns,
     const int x = contentRect.x() + col * (cellSize.width() + layoutSpacing);
     const int y = contentRect.y() + row * (cellSize.height() + layoutSpacing);
     return QRect(x, y, cellSize.width(), cellSize.height());
+}
+
+void DragGridLayout::setWidgetGeometryAnimated(QWidget *widget, const QRect &target)
+{
+    if (!widget || widget->geometry() == target) {
+        return;
+    }
+
+    // 首次布局或隐藏控件时直接定位，避免初始加载动画。
+    if (!widget->isVisible() || widget->geometry().isEmpty()) {
+        widget->setGeometry(target);
+        return;
+    }
+
+    QPropertyAnimation *animation = m_geometryAnimations.value(widget).data();
+    if (!animation) {
+        animation = new QPropertyAnimation(widget, "geometry", widget);
+        animation->setDuration(200);
+        animation->setEasingCurve(QEasingCurve::OutCubic);
+        m_geometryAnimations[widget] = animation;
+    }
+
+    animation->stop();
+    animation->setStartValue(widget->geometry());
+    animation->setEndValue(target);
+    animation->start();
+}
+
+void DragGridLayout::stopAnimationForWidget(QWidget *widget)
+{
+    if (!widget) {
+        return;
+    }
+
+    QPointer<QPropertyAnimation> animation = m_geometryAnimations.take(widget);
+    if (animation) {
+        animation->stop();
+        delete animation.data();
+    }
+}
+
+int DragGridLayout::targetIndexAt(const QPoint &pos) const
+{
+    if (m_items.isEmpty()) {
+        return -1;
+    }
+
+    const QMargins margins = contentsMargins();
+    const QRect contentRect = geometry().adjusted(margins.left(), margins.top(),
+                                                   -margins.right(), -margins.bottom());
+    if (!contentRect.isValid()) {
+        return -1;
+    }
+
+    const int columns = effectiveColumnCount();
+    if (columns <= 0) {
+        return -1;
+    }
+
+    const QSize cellSize = effectiveCellSize(contentRect);
+    if (cellSize.isEmpty()) {
+        return -1;
+    }
+
+    const int layoutSpacing = qMax(0, spacing());
+    const int stepWidth = qMax(1, cellSize.width() + layoutSpacing);
+    const int stepHeight = qMax(1, cellSize.height() + layoutSpacing);
+
+    const QPoint localPos = pos - contentRect.topLeft();
+    const int row = qMax(0, localPos.y() / stepHeight);
+    int col = localPos.x() / stepWidth;
+    if (localPos.x() < 0) {
+        col = -1;
+    }
+
+    int rawIndex = row * columns + col;
+
+    // 前后半区判断：多列时按水平方向，单列时按垂直方向。
+    if (columns > 1) {
+        const int xInCell = localPos.x() - col * stepWidth;
+        if (xInCell * 2 >= cellSize.width()) {
+            rawIndex += 1;
+        }
+    } else {
+        const int yInCell = localPos.y() - row * stepHeight;
+        if (yInCell * 2 >= cellSize.height()) {
+            rawIndex += 1;
+        }
+    }
+
+    // 占位槽数量与当前总项数相同（被忽略的项由占位符填补）。
+    const int maxIndex = m_items.size() - 1;
+    if (maxIndex < 0) {
+        return -1;
+    }
+
+    return qBound(0, rawIndex, maxIndex);
+}
+
+QRect DragGridLayout::placeholderRectAt(int placeholderIndex) const
+{
+    const QMargins margins = contentsMargins();
+    const QRect contentRect = geometry().adjusted(margins.left(), margins.top(),
+                                                  -margins.right(), -margins.bottom());
+    return cellRectForIndex(placeholderIndex, contentRect);
 }
 
 

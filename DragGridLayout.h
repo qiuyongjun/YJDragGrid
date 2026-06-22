@@ -1,10 +1,13 @@
 #ifndef DRAGGRIDLAYOUT_H
 #define DRAGGRIDLAYOUT_H
 
+#include <QHash>
 #include <QList>
 #include <QLayout>
+#include <QPointer>
 #include <QSize>
 
+class QPropertyAnimation;
 class QWidget;
 
 class DragGridLayout : public QLayout
@@ -56,6 +59,11 @@ public:
     bool moveItem(int from, int to);
     QRect cellRectForIndex(int index, const QRect &contentsRect) const;
 
+    // 根据鼠标位置计算目标占位索引（已考虑前后半区、首/尾/空白区域）。
+    int targetIndexAt(const QPoint &pos) const;
+    // 返回指定占位索引在当前布局中的几何矩形。
+    QRect placeholderRectAt(int placeholderIndex) const;
+
 private:
     struct Item {
         QLayoutItem *layoutItem = nullptr;
@@ -73,6 +81,9 @@ private:
 
     QRect cellRect(int index, const QRect &contentRect, int columns, const QSize &cellSize) const;
 
+    void setWidgetGeometryAnimated(QWidget *widget, const QRect &target);
+    void stopAnimationForWidget(QWidget *widget);
+
 private:
     QList<Item> m_items;
     int m_columnCount = 4;
@@ -85,6 +96,9 @@ private:
     // 缓存：invalidate 时失效，惰性计算
     mutable QSize m_cachedMinCellSize;
     mutable bool m_minCellSizeDirty = true;
+
+    // 控件几何过渡动画
+    QHash<QWidget *, QPointer<QPropertyAnimation>> m_geometryAnimations;
 };
 
 #endif // DRAGGRIDLAYOUT_H

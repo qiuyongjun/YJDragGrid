@@ -4,14 +4,22 @@
 #include "DragGridLayout.h"
 
 #include <QCursor>
+#include <QGraphicsDropShadowEffect>
+#include <QGraphicsOpacityEffect>
+#include <QLabel>
 #include <QMargins>
 #include <QMouseEvent>
-#include <QTimer>
+#include <QPainter>
+#include <QPropertyAnimation>
+#include <QResizeEvent>
+#include <QScrollBar>
 #include <QScrollArea>
+#include <QTimer>
 #include <QtGlobal>
 
 DragGridWidget::DragGridWidget(QScrollArea *scrollArea, QWidget *parent)
     : QWidget(parent)
+    , m_scrollArea(scrollArea)
 {
     m_gridLayout = new DragGridLayout(this);
     setLayout(m_gridLayout);
@@ -20,11 +28,26 @@ DragGridWidget::DragGridWidget(QScrollArea *scrollArea, QWidget *parent)
     m_placeholderWidget->setObjectName("GridPlaceholder");
     m_placeholderWidget->setVisible(false);
 
+    auto *placeholderOpacity = new QGraphicsOpacityEffect(m_placeholderWidget);
+    placeholderOpacity->setOpacity(0.5);
+    m_placeholderWidget->setGraphicsEffect(placeholderOpacity);
+
+    m_placeholderPulseAnimation = new QPropertyAnimation(placeholderOpacity, "opacity", this);
+    m_placeholderPulseAnimation->setDuration(800);
+    m_placeholderPulseAnimation->setStartValue(0.3);
+    m_placeholderPulseAnimation->setKeyValueAt(0.5, 0.7);
+    m_placeholderPulseAnimation->setEndValue(0.3);
+    m_placeholderPulseAnimation->setLoopCount(-1);
+
+    m_emptyStateLabel = new QLabel(tr("暂无卡片，点击上方按钮添加"), this);
+    m_emptyStateLabel->setObjectName("GridEmptyState");
+    m_emptyStateLabel->setAlignment(Qt::AlignCenter);
+    m_emptyStateLabel->hide();
+
     m_scrollTimer = new QTimer(this);
     m_scrollTimer->setInterval(16);
 
     m_dragController = new GridDragController(this);
-    m_dragController->setScrollArea(scrollArea);
     connect(m_scrollTimer, &QTimer::timeout, this, &DragGridWidget::slot_scrollTimer_timeOut);
 }
 
@@ -41,6 +64,7 @@ void DragGridWidget::insertWidget(int index, QWidget *widget)
 
     m_gridLayout->insertWidget(index, widget);
     widget->show();
+    updateEmptyState();
     updateGeometry();
 }
 
@@ -79,6 +103,7 @@ QWidget *DragGridWidget::takeWidget(int index)
     targetWidget->hide();
     targetWidget->setParent(nullptr);
     updatePlaceholder();
+    updateEmptyState();
     return targetWidget;
 }
 
@@ -91,6 +116,7 @@ void DragGridWidget::clear()
         }
         widget->deleteLater();
     }
+    updateEmptyState();
     updateGeometry();
 }
 
@@ -128,10 +154,12 @@ void DragGridWidget::setMinimumCellSize(const QSize &size)
 
 void DragGridWidget::setDragEnabled(bool enable)
 {
-    if (!enable && m_dragController->isDragging()) {
+    if (!enable && m_dragState == DragState::Dragging) {
         finishDrag();
         m_gridLayout->activate();
     }
+    m_dragState = DragState::Idle;
+    m_pressWidget = nullptr;
     m_dragEnable = enable;
 }
 
@@ -169,46 +197,56 @@ void DragGridWidget::mousePressEvent(QMouseEvent *event)
         return;
     }
 
-    for (QWidget *widget : widgets()) {
-        if (!widget || !widget->geometry().contains(event->pos())) {
-            continue;
-        }
-
-        m_dragController->beginDrag(widget,
-                                    event->pos() - widget->pos(),
-                                    {
-                                        widget->size(),
-                                        QSize(qMax(1, static_cast<int>(widget->width() * 1.1)),
-                                              qMax(1, static_cast<int>(widget->height() * 1.1)))
-                                    });
-        m_dragController->updatePlaceholderIndex(indexOfWidget(widget));
-        m_gridLayout->setIgnoredWidget(widget);
-        m_gridLayout->setPlaceholderIndex(indexOfWidget(widget));
-        m_gridLayout->activate();
-        updatePlaceholder();
-        grabMouse();
-        m_scrollTimer->start();
-        event->accept();
+    // 使用 childAt 替代线性遍历
+    QWidget *hitWidget = childAt(event->pos());
+    if (!hitWidget) {
+        QWidget::mousePressEvent(event);
         return;
     }
 
-    QWidget::mousePressEvent(event);
+    // 向上查找被布局管理的 widget
+    QWidget *targetWidget = nullptr;
+    for (QWidget *w : widgets()) {
+        if (w == hitWidget || w->isAncestorOf(hitWidget)) {
+            targetWidget = w;
+            break;
+        }
+    }
+
+    if (!targetWidget) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    m_dragState = DragState::Pressed;
+    m_pressWidget = targetWidget;
+    m_pressPos = event->pos();
+    m_pressOffset = event->pos() - targetWidget->pos();
+    event->accept();
 }
 
 void DragGridWidget::mouseMoveEvent(QMouseEvent *event)
 {
-    if (!m_dragEnable || !m_dragController->isDragging()) {
+    if (m_dragState == DragState::Pressed) {
+        if ((event->pos() - m_pressPos).manhattanLength() > kDragThreshold) {
+            startDragOperation(m_pressWidget, m_pressOffset);
+            m_dragState = DragState::Dragging;
+        } else {
+            return;
+        }
+    }
+
+    if (m_dragState != DragState::Dragging) {
         QWidget::mouseMoveEvent(event);
         return;
     }
 
-    const QPoint cursorPos = mapFromGlobal(QCursor::pos());
-    const QPoint widgetPos = cursorPos - m_dragController->dragPointOffset();
-    m_dragController->updateDragPosition(widgetPos);
+    // 使用事件位置替代 QCursor::pos()
+    const QPoint cursorPos = event->pos();
+    updateDragGhostPosition(cursorPos);
 
-    const int placeholderIndex = placeholderIndexAt(cursorPos);
-    if (placeholderIndex != m_dragController->placeholderIndex()) {
-        m_dragController->updatePlaceholderIndex(placeholderIndex);
+    const int placeholderIndex = m_gridLayout->targetIndexAt(cursorPos);
+    if (placeholderIndex >= 0 && placeholderIndex != m_gridLayout->placeholderIndex()) {
         m_gridLayout->setPlaceholderIndex(placeholderIndex);
         m_gridLayout->activate();
         updatePlaceholder();
@@ -219,19 +257,30 @@ void DragGridWidget::mouseMoveEvent(QMouseEvent *event)
 
 void DragGridWidget::mouseReleaseEvent(QMouseEvent *event)
 {
-    if (!m_dragController->isDragging()) {
-        QWidget::mouseReleaseEvent(event);
+    if (m_dragState == DragState::Dragging) {
+        finishDrag();
+        m_gridLayout->activate();
+        event->accept();
         return;
     }
 
-    finishDrag();
-    m_gridLayout->activate();
-    event->accept();
+    if (m_dragState == DragState::Pressed) {
+        m_dragState = DragState::Idle;
+        m_pressWidget = nullptr;
+    }
+
+    QWidget::mouseReleaseEvent(event);
+}
+
+void DragGridWidget::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateEmptyState();
 }
 
 void DragGridWidget::slot_scrollTimer_timeOut()
 {
-    m_dragController->autoScroll();
+    autoScroll();
 }
 
 int DragGridWidget::indexOfWidget(const QWidget *widget) const
@@ -239,28 +288,34 @@ int DragGridWidget::indexOfWidget(const QWidget *widget) const
     return m_gridLayout->indexOf(widget);
 }
 
-int DragGridWidget::placeholderIndexAt(const QPoint &pos) const
+void DragGridWidget::startDragOperation(QWidget *widget, const QPoint &offset)
 {
-    if (count() <= 0) {
-        return -1;
+    if (!widget) {
+        return;
     }
 
-    const QRect contentRect = layoutContentsRect();
-    const QRect firstCellRect = m_gridLayout->cellRectForIndex(0, contentRect);
-    QSize cellSize = firstCellRect.size();
-    if (!cellSize.isValid() || cellSize.isEmpty()) {
-        cellSize = m_gridLayout->minimumCellSize();
+    const int originalIndex = indexOfWidget(widget);
+    const QSize normalSize = widget->size();
+    const QSize draggedSize(qMax(1, static_cast<int>(widget->width() * kGhostScale)),
+                            qMax(1, static_cast<int>(widget->height() * kGhostScale)));
+
+    m_dragController->beginDrag(widget, offset,
+                                GridDragController::DragVisualState{normalSize, draggedSize});
+
+    createDragGhost(widget);
+    widget->hide();
+
+    m_gridLayout->setIgnoredWidget(widget);
+    m_gridLayout->setPlaceholderIndex(originalIndex);
+    m_gridLayout->activate();
+    updatePlaceholder();
+
+    if (m_placeholderPulseAnimation) {
+        m_placeholderPulseAnimation->start();
     }
 
-    const int columns = qMax(1, m_gridLayout->effectiveColumnCount());
-    const int spacing = qMax(0, m_gridLayout->spacing());
-    const int stepWidth = qMax(1, cellSize.width() + spacing);
-    const int stepHeight = qMax(1, cellSize.height() + spacing);
-    const QPoint localPos = pos - contentRect.topLeft();
-    const int row = qMax(0, localPos.y() / stepHeight);
-    const int column = qBound(0, localPos.x() / stepWidth, columns - 1);
-
-    return qBound(0, row * columns + column, count() - 1);
+    grabMouse();
+    m_scrollTimer->start();
 }
 
 bool DragGridWidget::reorderForPlaceholder()
@@ -271,24 +326,49 @@ bool DragGridWidget::reorderForPlaceholder()
     }
 
     const int from = indexOfWidget(draggedWidget);
-    const int to = m_dragController->placeholderIndex();
+    const int to = m_gridLayout->placeholderIndex();
     return m_gridLayout->moveItem(from, to);
 }
 
 void DragGridWidget::finishDrag()
 {
-    if (!m_dragController->isDragging()) {
+    if (m_dragState != DragState::Dragging) {
         m_scrollTimer->stop();
         m_placeholderWidget->hide();
+        if (m_placeholderPulseAnimation) {
+            m_placeholderPulseAnimation->stop();
+        }
         return;
     }
 
     m_scrollTimer->stop();
+
+    QWidget *draggedWidget = m_dragController->draggedWidget();
+    const int finalPlaceholderIndex = m_gridLayout->placeholderIndex();
+
     const bool hasOrderChanged = reorderForPlaceholder();
     m_gridLayout->setIgnoredWidget(nullptr);
     m_gridLayout->setPlaceholderIndex(-1);
     m_dragController->endDrag();
+
+    clearDragGhost();
+
+    if (draggedWidget && finalPlaceholderIndex >= 0) {
+        const QRect targetRect = m_gridLayout->placeholderRectAt(finalPlaceholderIndex);
+        if (targetRect.isValid()) {
+            draggedWidget->setGeometry(targetRect);
+        }
+        draggedWidget->show();
+    }
+
     m_placeholderWidget->hide();
+    if (m_placeholderPulseAnimation) {
+        m_placeholderPulseAnimation->stop();
+    }
+
+    m_dragState = DragState::Idle;
+    m_pressWidget = nullptr;
+
     if (mouseGrabber() == this) {
         releaseMouse();
     }
@@ -299,13 +379,13 @@ void DragGridWidget::finishDrag()
 
 void DragGridWidget::updatePlaceholder()
 {
-    const int index = m_dragController->placeholderIndex();
+    const int index = m_gridLayout->placeholderIndex();
     if (index < 0 || count() == 0) {
         m_placeholderWidget->hide();
         return;
     }
 
-    const QRect placeholderRect = m_gridLayout->cellRectForIndex(index, layoutContentsRect());
+    const QRect placeholderRect = m_gridLayout->placeholderRectAt(index);
     if (!placeholderRect.isValid()) {
         m_placeholderWidget->hide();
         return;
@@ -316,10 +396,126 @@ void DragGridWidget::updatePlaceholder()
     m_placeholderWidget->lower();
 }
 
-QRect DragGridWidget::layoutContentsRect() const
+void DragGridWidget::createDragGhost(QWidget *source)
 {
-    const QMargins margins = m_gridLayout->contentsMargins();
-    return rect().adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom());
+    if (!source) {
+        return;
+    }
+
+    clearDragGhost();
+
+    const QPixmap sourcePixmap = source->grab();
+    const QSize scaledSize(qMax(1, static_cast<int>(source->width() * kGhostScale)),
+                           qMax(1, static_cast<int>(source->height() * kGhostScale)));
+    const QPixmap scaledPixmap = sourcePixmap.scaled(scaledSize,
+                                                     Qt::KeepAspectRatio,
+                                                     Qt::SmoothTransformation);
+
+    // 生成半透明镜像（子控件用 QPainter 控制 alpha，比 setWindowOpacity 更可靠）。
+    QPixmap ghostPixmap(scaledSize);
+    ghostPixmap.fill(Qt::transparent);
+    {
+        QPainter painter(&ghostPixmap);
+        painter.setOpacity(0.85);
+        painter.drawPixmap(0, 0, scaledPixmap);
+    }
+
+    auto *ghost = new QLabel(this);
+    ghost->setObjectName("GridDragGhost");
+    ghost->setPixmap(ghostPixmap);
+    ghost->resize(ghostPixmap.size());
+    ghost->setAttribute(Qt::WA_TransparentForMouseEvents);
+
+    auto *shadowEffect = new QGraphicsDropShadowEffect(ghost);
+    shadowEffect->setBlurRadius(20);
+    shadowEffect->setColor(QColor(0, 0, 0, 120));
+    shadowEffect->setOffset(4, 4);
+    ghost->setGraphicsEffect(shadowEffect);
+
+    // 居中覆盖在原控件位置，避免初次跳动。
+    const QPoint centerOffset((ghost->width() - source->width()) / 2,
+                              (ghost->height() - source->height()) / 2);
+    ghost->move(source->pos() - centerOffset);
+    ghost->raise();
+    ghost->show();
+
+    m_dragGhostWidget = ghost;
 }
 
+void DragGridWidget::updateDragGhostPosition(const QPoint &cursorPos)
+{
+    if (!m_dragGhostWidget) {
+        return;
+    }
 
+    const QPoint offset = m_dragController->dragPointOffset();
+    const QPoint scaledOffset(qRound(offset.x() * kGhostScale),
+                              qRound(offset.y() * kGhostScale));
+    m_dragGhostWidget->move(cursorPos - scaledOffset);
+}
+
+void DragGridWidget::clearDragGhost()
+{
+    if (!m_dragGhostWidget) {
+        return;
+    }
+
+    m_dragGhostWidget->hide();
+    m_dragGhostWidget->deleteLater();
+    m_dragGhostWidget = nullptr;
+}
+
+void DragGridWidget::updateEmptyState()
+{
+    const bool empty = (count() == 0);
+    m_emptyStateLabel->setVisible(empty);
+    if (empty) {
+        m_emptyStateLabel->setGeometry(rect().adjusted(20, 20, -20, -20));
+    }
+}
+
+void DragGridWidget::autoScroll() const
+{
+    if (m_dragState != DragState::Dragging || !m_scrollArea) {
+        return;
+    }
+
+    const int margin = 40;
+    const int maxSpeed = 16;
+    const int marginSquared = margin * margin;
+
+    const QPoint globalMouse = QCursor::pos();
+    const QPoint mouseInViewport = m_scrollArea->viewport()->mapFromGlobal(globalMouse);
+
+    auto *vBar = m_scrollArea->verticalScrollBar();
+    auto *hBar = m_scrollArea->horizontalScrollBar();
+
+    int dy = 0;
+    int dx = 0;
+
+    const int viewportHeight = m_scrollArea->viewport()->height();
+    const int viewportWidth = m_scrollArea->viewport()->width();
+
+    if (mouseInViewport.y() < margin) {
+        const int distance = margin - mouseInViewport.y();
+        dy = -qMax(1, maxSpeed * distance * distance / marginSquared);
+    } else if (mouseInViewport.y() > viewportHeight - margin) {
+        const int distance = mouseInViewport.y() - (viewportHeight - margin);
+        dy = qMax(1, maxSpeed * distance * distance / marginSquared);
+    }
+
+    if (mouseInViewport.x() < margin) {
+        const int distance = margin - mouseInViewport.x();
+        dx = -qMax(1, maxSpeed * distance * distance / marginSquared);
+    } else if (mouseInViewport.x() > viewportWidth - margin) {
+        const int distance = mouseInViewport.x() - (viewportWidth - margin);
+        dx = qMax(1, maxSpeed * distance * distance / marginSquared);
+    }
+
+    if (dy != 0) {
+        vBar->setValue(qBound(vBar->minimum(), vBar->value() + dy, vBar->maximum()));
+    }
+    if (dx != 0) {
+        hBar->setValue(qBound(hBar->minimum(), hBar->value() + dx, hBar->maximum()));
+    }
+}
