@@ -50,6 +50,8 @@ DragGridWidget::DragGridWidget(QScrollArea *scrollArea, QWidget *parent)
     m_scrollTimer->setInterval(m_scrollTimerInterval);
 
     connect(m_scrollTimer, &QTimer::timeout, this, &DragGridWidget::slot_scrollTimer_timeOut);
+
+    updateEmptyState();
 }
 
 void DragGridWidget::addWidget(QWidget *widget)

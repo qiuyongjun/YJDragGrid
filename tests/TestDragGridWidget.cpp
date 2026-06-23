@@ -86,15 +86,15 @@ void TestDragGridWidget::emptyStateVisible_togglesVisibility()
 
     auto *label = grid.findChild<QLabel *>(QStringLiteral("GridEmptyState"));
     QVERIFY(label);
-    QVERIFY(label->isVisible());
+    QVERIFY(!label->isHidden());
 
     grid.setEmptyStateVisible(false);
     QVERIFY(!grid.emptyStateVisible());
-    QVERIFY(!label->isVisible());
+    QVERIFY(label->isHidden());
 
     grid.setEmptyStateVisible(true);
     QVERIFY(grid.emptyStateVisible());
-    QVERIFY(label->isVisible());
+    QVERIFY(!label->isHidden());
 }
 
 void TestDragGridWidget::setDragEnabled_falseDuringDrag_doesNotCrash()
