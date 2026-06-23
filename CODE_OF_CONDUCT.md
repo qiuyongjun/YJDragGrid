@@ -1,29 +1,29 @@
-# Contributor Covenant Code of Conduct
+# Contributor Covenant 行为准则
 
-## Our Pledge
+## 我们的承诺
 
-We as members, contributors, and leaders pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
+作为成员、贡献者和维护者，我们承诺让每个人都能在无骚扰的环境中参与社区，不因年龄、体型、可见或不可见的残障、族裔、性征、性别认同与表达、经验水平、教育程度、社会经济地位、国籍、外貌、种族、宗教、性身份或性取向而受到区别对待。
 
-## Our Standards
+## 行为标准
 
-Examples of behavior that contributes to a positive environment:
+有助于营造积极环境的行为包括：
 
-- Using welcoming and inclusive language
-- Being respectful of differing viewpoints and experiences
-- Gracefully accepting constructive criticism
-- Focusing on what is best for the community
+- 使用友好、包容的语言
+- 尊重不同观点和经历
+- 以开放态度接受建设性反馈
+- 关注对社区最有利的事情
 
-Examples of unacceptable behavior:
+不可接受的行为包括：
 
-- The use of sexualized language or imagery
-- Trolling, insulting or derogatory comments, and personal attacks
-- Public or private harassment
-- Publishing others' private information without permission
+- 使用性暗示语言或图像
+- 挑衅、侮辱、贬损性评论和人身攻击
+- 公开或私下骚扰他人
+- 未经允许发布他人隐私信息
 
-## Enforcement
+## 执行
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainers. All complaints will be reviewed and investigated promptly and fairly.
+如发现辱骂、骚扰或其他不可接受行为，可以向项目维护者报告。所有投诉都会被及时、公正地审查和处理。
 
-## Attribution
+## 来源
 
-This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.
+本行为准则改编自 [Contributor Covenant](https://www.contributor-covenant.org) 2.1 版本。

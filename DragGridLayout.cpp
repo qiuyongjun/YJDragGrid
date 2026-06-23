@@ -33,6 +33,7 @@ bool DragGridLayout::eventFilter(QObject *watched, QEvent *event)
     if (event->type() == QEvent::LayoutRequest) {
         auto *widget = qobject_cast<QWidget *>(watched);
         if (widget && indexOf(widget) >= 0) {
+            // 子控件最小尺寸可能变化，必须让缓存失效后再参与下一次布局计算。
             invalidate();
         }
     }
@@ -121,6 +122,7 @@ void DragGridLayout::setGeometry(const QRect &rect)
             continue;
         }
 
+        // 拖拽中的控件由占位符接管视觉位置，其余控件顺延排布。
         if (visualIndex == m_placeholderIndex) {
             ++visualIndex;
         }
@@ -394,6 +396,7 @@ QSize DragGridLayout::minimumCellSizeForItems() const
         return m_cachedMinCellSize;
     }
 
+    // 最小单元格尺寸需要同时满足配置值和所有子控件的 minimumSize。
     QSize cellSize = m_minimumCellSize;
     for (const Item &item : m_items) {
         if (item.layoutItem) {

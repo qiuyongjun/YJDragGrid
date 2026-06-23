@@ -16,6 +16,7 @@ class DragGridLayout : public QLayout
     Q_DISABLE_COPY(DragGridLayout)
 
 public:
+    // 创建拖拽网格布局。
     explicit DragGridLayout(QWidget *parent = nullptr);
     ~DragGridLayout() override;
 
@@ -35,32 +36,52 @@ public:
     int heightForWidth(int width) const override;
     Qt::Orientations expandingDirections() const override;
 
+    // 返回配置的最大列数。
     int columnCount() const;
+    // 设置最大列数，非法值会被限制为至少 1 列。
     void setColumnCount(int columnCount);
 
+    // 返回配置的单元格最小尺寸。
     QSize minimumCellSize() const;
+    // 设置单元格最小尺寸，布局会同时考虑子控件最小尺寸。
     void setMinimumCellSize(const QSize &size);
 
+    // 返回是否启用等宽单元格。
     bool equalCellSizeEnabled() const;
+    // 设置是否按可用宽度扩展所有单元格。
     void setEqualCellSizeEnabled(bool enable);
 
+    // 返回是否在项目较少时压缩列数。
     bool compactWhenSparseEnabled() const;
+    // 设置稀疏场景是否按项目数收缩列数。
     void setCompactWhenSparseEnabled(bool enable);
+    // 返回当前实际用于布局的列数。
     int effectiveColumnCount() const;
 
+    // 返回拖拽中被布局临时忽略的控件。
     QWidget *ignoredWidget() const;
+    // 设置拖拽中临时忽略的控件，由占位符补齐它的视觉位置。
     void setIgnoredWidget(QWidget *widget);
 
+    // 返回布局几何动画时长。
     int animationDuration() const;
+    // 设置布局几何动画时长，单位毫秒。
     void setAnimationDuration(int ms);
 
+    // 返回当前占位符索引，-1 表示未显示占位符。
     int placeholderIndex() const;
+    // 设置占位符索引，越界值会被限制到有效范围。
     void setPlaceholderIndex(int index);
 
+    // 按当前顺序返回布局管理的控件。
     QList<QWidget *> widgets() const;
+    // 返回控件在布局中的索引，未找到返回 -1。
     int indexOf(const QWidget *widget) const;
+    // 取出指定索引控件并释放布局项，不销毁控件。
     QWidget *takeWidget(int index);
+    // 移动布局项到目标索引，索引无效或未变化时返回 false。
     bool moveItem(int from, int to);
+    // 返回指定视觉索引对应的单元格矩形。
     QRect cellRectForIndex(int index, const QRect &contentsRect) const;
 
     // 根据鼠标位置计算目标占位索引（已考虑前后半区、首/尾/空白区域）。

@@ -1,9 +1,9 @@
-# Changelog
+# Changelog / 更新日志
 
-All notable changes to this project will be documented in this file.
+本文件记录项目的重要变更。
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，
+版本号遵循 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
 
@@ -11,33 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keyboard drag-and-drop support (Space to pick, arrows to move, Enter to drop, Escape to cancel).
-- Optional `dragHandle()` / `setDragHandle()` to restrict drag initiation to a handle widget.
-- Configurable auto-scroll margin/speed and placeholder opacity/pulse duration.
-- Unit tests for `DragGridLayout` and `DragGridWidget` using Qt Test.
+- 新增键盘拖拽支持：`Space` 拾取、方向键移动、`Enter` 放下、`Escape` 取消。
+- 新增可选 `dragHandle()` / `setDragHandle()`，可限制仅通过手柄控件启动拖拽。
+- 新增自动滚动边距/速度、占位符透明度/脉冲时长配置。
+- 新增基于 Qt Test 的 `DragGridLayout` 和 `DragGridWidget` 单元测试。
 
 ### Changed
 
-- Merged `GridDragController` state into `DragGridWidget` and removed the now-unused controller class.
-- `finishDrag()` now animates the dragged widget smoothly back to its final cell.
-- `autoScroll()` is no longer marked `const`.
-- Refactored drag cleanup into a single `cleanupDragUi()` helper to avoid duplication between `finishDrag()` and `cancelDrag()`.
+- 将 `GridDragController` 状态合并到 `DragGridWidget`，并移除不再使用的控制器类。
+- `finishDrag()` 现在会将被拖拽控件平滑动画到最终单元格。
+- `autoScroll()` 不再标记为 `const`。
+- 将拖拽清理逻辑收敛到 `cleanupDragUi()`，避免 `finishDrag()` 与 `cancelDrag()` 重复实现。
 
 ### Fixed
 
-- Keyboard drag no longer grabs the mouse, and the viewport scrolls automatically when moving the placeholder with arrow keys.
-- Drag handle detection now walks the parent chain for robustness.
-- `setPlaceholderOpacity()` is guarded against calls before the placeholder widget is constructed.
-- Removed unused `#include <QCursor>` from `DragGridWidget.cpp`.
-- `DragGridLayout` now invalidates its minimum cell size cache when a child widget emits `LayoutRequest`.
-- Completed geometry animations are removed from `m_geometryAnimations` to avoid stale entries.
+- 键盘拖拽不再抓取鼠标；使用方向键移动占位符时，视口会自动滚动。
+- 拖拽手柄检测改为沿父级链查找，提高嵌套控件场景的稳定性。
+- `setPlaceholderOpacity()` 增加占位符控件未构造时的保护。
+- 移除 `DragGridWidget.cpp` 中未使用的 `#include <QCursor>`。
+- 子控件发出 `LayoutRequest` 时，`DragGridLayout` 会使最小单元格尺寸缓存失效。
+- 几何动画完成后会从 `m_geometryAnimations` 移除，避免残留条目。
 
 ## [0.1.0] - 2026-06-22
 
 ### Added
 
-- Initial open source release.
-- Custom `DragGridLayout` based on `QLayout`.
-- `DragGridWidget` container with mouse-based drag-and-drop reordering.
-- Sample `CardWidget` and a demo application.
-- CMake build system with Qt 5 / Qt 6 support.
+- 首次开源发布。
+- 新增基于 `QLayout` 的自定义 `DragGridLayout`。
+- 新增支持鼠标拖拽重排的 `DragGridWidget` 容器。
+- 新增示例 `CardWidget` 和演示程序。
+- 新增支持 Qt 5 / Qt 6 的 CMake 构建系统。

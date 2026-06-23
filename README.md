@@ -91,6 +91,8 @@ grid->addWidget(new MyCardWidget());
 - `int autoScrollMaxSpeed() / void setAutoScrollMaxSpeed(int)` — Maximum auto-scroll speed in pixels (default 16).
 - `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — Opacity of the drop placeholder (default 0.5).
 - `int placeholderPulseDuration() / void setPlaceholderPulseDuration(int)` — Placeholder pulse duration in milliseconds (default 800).
+- `QString emptyText() / void setEmptyText(const QString &)` — Text shown when the grid has no items.
+- `bool emptyStateVisible() / void setEmptyStateVisible(bool)` — Show or hide the empty-state text.
 
 ### Keyboard Reordering
 

@@ -16,13 +16,17 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
+    // 创建拖拽网格演示窗口。
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
 private slots:
+    // 添加一张演示卡片。
     void on_pushButton_addView_clicked();
 
+    // 响应卡片关闭请求并从网格中删除卡片。
     void slot_viewRemove();
+    // 拖拽顺序变化后刷新示例编号。
     void slot_orderChanged();
 
 private:

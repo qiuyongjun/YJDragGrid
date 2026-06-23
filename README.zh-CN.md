@@ -91,6 +91,8 @@ grid->addWidget(new MyCardWidget());
 - `int autoScrollMaxSpeed() / void setAutoScrollMaxSpeed(int)` — 自动滚动最大速度，单位像素（默认 16）。
 - `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — 占位符透明度（默认 0.5）。
 - `int placeholderPulseDuration() / void setPlaceholderPulseDuration(int)` — 占位符脉冲动画时长，单位毫秒（默认 800）。
+- `QString emptyText() / void setEmptyText(const QString &)` — 设置空状态提示文本。
+- `bool emptyStateVisible() / void setEmptyStateVisible(bool)` — 显示或隐藏空状态提示。
 
 ### 键盘重排
 

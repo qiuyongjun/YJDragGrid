@@ -345,7 +345,6 @@ void DragGridWidget::mousePressEvent(QMouseEvent *event)
         return;
     }
 
-    // 使用 childAt 替代线性遍历
     QWidget *hitWidget = childAt(event->pos());
     if (!hitWidget) {
         QWidget::mousePressEvent(event);
@@ -358,7 +357,7 @@ void DragGridWidget::mousePressEvent(QMouseEvent *event)
         return;
     }
 
-    // 向上查找被布局管理的 widget
+    // 命中的通常是卡片内部子控件，需要映射回布局管理的卡片。
     QWidget *targetWidget = nullptr;
     for (QWidget *w : widgets()) {
         if (w == hitWidget || w->isAncestorOf(hitWidget)) {
@@ -395,7 +394,6 @@ void DragGridWidget::mouseMoveEvent(QMouseEvent *event)
         return;
     }
 
-    // 使用事件位置替代 QCursor::pos()
     const QPoint cursorPos = event->pos();
     m_lastMousePos = cursorPos;
     updateDragGhostPosition(cursorPos);
@@ -868,6 +866,7 @@ void DragGridWidget::autoScroll()
     const int viewportHeight = m_scrollArea->viewport()->height();
     const int viewportWidth = m_scrollArea->viewport()->width();
 
+    // 越靠近边缘滚动越快，平方曲线能减少刚进入边缘区域时的突兀跳动。
     if (mouseInViewport.y() < margin) {
         const int distance = margin - mouseInViewport.y();
         dy = -qMax(1, maxSpeed * distance * distance / marginSquared);

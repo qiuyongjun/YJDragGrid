@@ -11,14 +11,14 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>拖拽网格示例</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout_2">
     <item row="0" column="0">
      <widget class="QPushButton" name="pushButton_addView">
       <property name="text">
-       <string>添加视图</string>
+       <string>添加卡片</string>
       </property>
      </widget>
     </item>
