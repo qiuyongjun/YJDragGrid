@@ -40,3 +40,11 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: cmake --build build --config Release
+
+      - name: Test (Unix)
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build --output-on-failure -C Release

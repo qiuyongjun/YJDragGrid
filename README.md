@@ -44,6 +44,12 @@ Run the demo:
 ./build/GridLayoutDemo
 ```
 
+### Run tests
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
 ### Use as a library
 
 QtDragGrid is built as a static library `DragGrid` linked to the demo executable. To use it in your own project:
@@ -80,6 +86,26 @@ grid->addWidget(new MyCardWidget());
 - `qreal ghostScale() / void setGhostScale(qreal)` — Scale factor of the drag ghost (default 1.05).
 - `int animationDuration() / void setAnimationDuration(int)` — Layout transition duration in milliseconds (default 200).
 - `int scrollTimerInterval() / void setScrollTimerInterval(int)` — Auto-scroll timer interval in milliseconds (default 16).
+- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — Optional handle widget; only presses inside the handle start a drag.
+- `int autoScrollMargin() / void setAutoScrollMargin(int)` — Distance from viewport edge that triggers auto-scroll (default 40).
+- `int autoScrollMaxSpeed() / void setAutoScrollMaxSpeed(int)` — Maximum auto-scroll speed in pixels (default 16).
+- `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — Opacity of the drop placeholder (default 0.5).
+- `int placeholderPulseDuration() / void setPlaceholderPulseDuration(int)` — Placeholder pulse duration in milliseconds (default 800).
+
+### Keyboard Reordering
+
+When a child widget has focus and `setDragEnabled(true)` is active:
+
+- `Space` — Pick up the focused card.
+- `Arrow keys` — Move the drop placeholder; the viewport scrolls automatically if the placeholder moves out of view.
+- `Enter` — Drop the card at the placeholder position.
+- `Escape` — Cancel the drag and restore the original order, returning focus to the dragged card.
+
+> **Note:** Calling `setDragEnabled(false)` while a drag is in progress forces the dragged card to be dropped at the current placeholder position.
+
+### Drag Handle
+
+By default the whole card is draggable. To restrict dragging to a specific sub-widget (e.g. a title bar), use `setDragHandle(widget)`. The handle widget must be a descendant of the cards added to `DragGridWidget`; ownership remains with the card.
 
 ## Project Layout
 
@@ -87,9 +113,9 @@ grid->addWidget(new MyCardWidget());
 .
 ├── DragGridLayout.*        # Custom QLayout implementation
 ├── DragGridWidget.*        # Drag-and-drop container widget
-├── GridDragController.*    # Drag state and auto-scroll controller
 ├── CardWidget.*            # Sample card widget used in the demo
 ├── MainWindow.* / main.cpp # Demo application entry point
+├── tests/                  # Unit tests
 ├── style.qss               # Demo stylesheet
 ├── CMakeLists.txt          # Build configuration
 └── .github/workflows/      # CI configuration

@@ -44,6 +44,12 @@ cmake --build build --config Release
 ./build/GridLayoutDemo
 ```
 
+### 运行测试
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
 ### 作为库使用
 
 QtDragGrid 默认会构建一个名为 `DragGrid` 的静态库，演示程序链接该库。你可以在自己的项目中这样使用：
@@ -80,6 +86,26 @@ grid->addWidget(new MyCardWidget());
 - `qreal ghostScale() / void setGhostScale(qreal)` — 拖拽镜像缩放比例（默认 1.05）。
 - `int animationDuration() / void setAnimationDuration(int)` — 布局过渡动画时长，单位毫秒（默认 200）。
 - `int scrollTimerInterval() / void setScrollTimerInterval(int)` — 自动滚动定时器间隔，单位毫秒（默认 16）。
+- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — 可选拖拽手柄；仅在手柄区域内按下才启动拖拽。
+- `int autoScrollMargin() / void setAutoScrollMargin(int)` — 触发自动滚动的视口边缘距离（默认 40）。
+- `int autoScrollMaxSpeed() / void setAutoScrollMaxSpeed(int)` — 自动滚动最大速度，单位像素（默认 16）。
+- `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — 占位符透明度（默认 0.5）。
+- `int placeholderPulseDuration() / void setPlaceholderPulseDuration(int)` — 占位符脉冲动画时长，单位毫秒（默认 800）。
+
+### 键盘重排
+
+当子控件获得焦点且已启用拖拽时：
+
+- `Space` — 拾取当前卡片。
+- `方向键` — 移动占位符位置；若占位符移出视口，视口会自动滚动。
+- `Enter` — 将卡片放到占位符位置。
+- `Escape` — 取消拖拽并恢复原始顺序，焦点回到被拖拽卡片。
+
+> **注意：** 拖拽过程中调用 `setDragEnabled(false)` 会强制将卡片落到当前占位符位置。
+
+### 拖拽手柄
+
+默认情况下整张卡片都可拖拽。如需限制仅在某个子控件（如标题栏）上启动拖拽，请使用 `setDragHandle(widget)`。手柄控件必须是已添加到 `DragGridWidget` 的卡片的子控件，所有权仍归卡片所有。
 
 ## 项目结构
 
@@ -87,9 +113,9 @@ grid->addWidget(new MyCardWidget());
 .
 ├── DragGridLayout.*        # 自定义 QLayout 实现
 ├── DragGridWidget.*        # 拖拽重排容器控件
-├── GridDragController.*    # 拖拽状态与自动滚动控制器
 ├── CardWidget.*            # 演示用卡片控件
 ├── MainWindow.* / main.cpp # 演示程序入口
+├── tests/                  # 单元测试
 ├── style.qss               # 演示样式表
 ├── CMakeLists.txt          # 构建配置
 └── .github/workflows/      # CI 配置

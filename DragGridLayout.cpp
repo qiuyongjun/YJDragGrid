@@ -1,5 +1,6 @@
 #include "DragGridLayout.h"
 
+#include <QEvent>
 #include <QLayoutItem>
 #include <QMargins>
 #include <QPropertyAnimation>
@@ -27,6 +28,17 @@ void DragGridLayout::invalidate()
     QLayout::invalidate();
 }
 
+bool DragGridLayout::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::LayoutRequest) {
+        auto *widget = qobject_cast<QWidget *>(watched);
+        if (widget && indexOf(widget) >= 0) {
+            invalidate();
+        }
+    }
+    return QLayout::eventFilter(watched, event);
+}
+
 void DragGridLayout::addItem(QLayoutItem *item)
 {
     if (!item) {
@@ -49,6 +61,7 @@ void DragGridLayout::insertWidget(int index, QWidget *widget, Qt::Alignment alig
     }
 
     addChildWidget(widget);
+    widget->installEventFilter(this);
     auto *item = new QWidgetItem(widget);
     m_items.insert(clampedInsertIndex(index), Item{item, alignment});
     invalidate();
@@ -71,6 +84,7 @@ QLayoutItem *DragGridLayout::takeAt(int index)
 
     Item item = m_items.takeAt(index);
     if (item.layoutItem && item.layoutItem->widget()) {
+        item.layoutItem->widget()->removeEventFilter(this);
         stopAnimationForWidget(item.layoutItem->widget());
     }
     invalidate();
@@ -276,6 +290,7 @@ QWidget *DragGridLayout::takeWidget(int index)
 
 bool DragGridLayout::moveItem(int from, int to)
 {
+    Q_ASSERT(from >= 0 && from < m_items.size());
     if (from < 0 || from >= m_items.size()) {
         return false;
     }
@@ -462,6 +477,9 @@ void DragGridLayout::setWidgetGeometryAnimated(QWidget *widget, const QRect &tar
         animation = new QPropertyAnimation(widget, "geometry", widget);
         animation->setEasingCurve(QEasingCurve::OutCubic);
         m_geometryAnimations[widget] = animation;
+        connect(animation, &QPropertyAnimation::finished, this, [this, widget]() {
+            m_geometryAnimations.remove(widget);
+        });
     }
     animation->setDuration(m_animationDuration);
 

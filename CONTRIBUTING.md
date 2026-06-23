@@ -20,8 +20,10 @@ When reporting a bug, include:
 2. Make your changes, keeping the existing code style.
 3. Add or update tests and documentation if applicable.
 4. Ensure the project still builds on your local machine.
-5. Commit with clear messages describing the change.
-6. Open a pull request and fill out the provided template.
+5. Run the test suite with `ctest --test-dir build --output-on-failure`.
+6. Add unit tests for new behavior in `tests/Test<Component>.cpp`.
+7. Commit with clear messages describing the change.
+8. Open a pull request and fill out the provided template.
 
 ## Code Style
 

@@ -2,18 +2,18 @@
 #define DRAGGRIDWIDGET_H
 
 #include <QList>
+#include <QPointer>
 #include <QSize>
 #include <QWidget>
 
 class QLabel;
+class QKeyEvent;
 class QMouseEvent;
 class QPropertyAnimation;
 class QResizeEvent;
 class QScrollArea;
 class QTimer;
 class DragGridLayout;
-
-class GridDragController;
 
 class DragGridWidget : public QWidget
 {
@@ -53,11 +53,26 @@ public:
     qreal ghostScale() const;
     void setGhostScale(qreal scale);
 
+    QWidget *dragHandle() const;
+    void setDragHandle(QWidget *handle);
+
     int scrollTimerInterval() const;
     void setScrollTimerInterval(int ms);
 
     int animationDuration() const;
     void setAnimationDuration(int ms);
+
+    int autoScrollMargin() const;
+    void setAutoScrollMargin(int margin);
+
+    int autoScrollMaxSpeed() const;
+    void setAutoScrollMaxSpeed(int speed);
+
+    qreal placeholderOpacity() const;
+    void setPlaceholderOpacity(qreal opacity);
+
+    int placeholderPulseDuration() const;
+    void setPlaceholderPulseDuration(int ms);
 
     void setEqualCellSizeEnabled(bool enable);
     bool equalCellSizeEnabled() const;
@@ -71,6 +86,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
 private slots:
@@ -81,10 +97,18 @@ private:
 
     int indexOfWidget(const QWidget *widget) const;
     bool reorderForPlaceholder();
-    void startDragOperation(QWidget *widget, const QPoint &offset);
-    void finishDrag();
+    void startDragOperation(QWidget *widget, const QPoint &offset, bool grabMouse = true);
+    bool finishDrag();
+    void cancelDrag();
+    void cleanupDragUi();
     void updatePlaceholder();
-    void autoScroll() const;
+    void autoScroll();
+    void ensurePlaceholderVisible();
+
+    void startKeyboardDrag();
+    void movePlaceholderByKey(int key);
+
+    bool isUnderDragHandle(QWidget *widget) const;
 
     void createDragGhost(QWidget *source);
     void updateDragGhostPosition(const QPoint &cursorPos);
@@ -97,13 +121,15 @@ private:
     QWidget *m_placeholderWidget = nullptr;
     QTimer *m_scrollTimer = nullptr;
     QScrollArea *m_scrollArea = nullptr;
-    GridDragController *m_dragController = nullptr;
 
     DragState m_dragState = DragState::Idle;
     QWidget *m_pressWidget = nullptr;
+    QWidget *m_draggedWidget = nullptr;
     QPoint m_pressPos;
     QPoint m_pressOffset;
+    QPoint m_dragPointOffset;
     QPoint m_lastMousePos;
+    int m_keyboardDragStartIndex = -1;
 
     QWidget *m_dragGhostWidget = nullptr;
     QLabel  *m_emptyStateLabel = nullptr;
@@ -112,8 +138,14 @@ private:
     bool m_dragEnable = false;
     int m_dragThreshold = 6;
     qreal m_ghostScale = 1.05;
+    QPointer<QWidget> m_dragHandle;
     int m_scrollTimerInterval = 16;
     int m_animationDuration = 200;
+
+    int m_autoScrollMargin = 40;
+    int m_autoScrollMaxSpeed = 16;
+    qreal m_placeholderOpacity = 0.5;
+    int m_placeholderPulseDuration = 800;
 };
 
 #endif // DRAGGRIDWIDGET_H

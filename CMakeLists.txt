@@ -9,8 +9,8 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Test)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Test)
 
 # ---------------------------------------------------------------------------
 # Library: DragGrid
@@ -20,8 +20,6 @@ set(DRAGGRID_SOURCES
     DragGridLayout.cpp
     DragGridWidget.h
     DragGridWidget.cpp
-    GridDragController.h
-    GridDragController.cpp
 )
 
 add_library(DragGrid STATIC ${DRAGGRID_SOURCES})
@@ -86,6 +84,23 @@ if(QT_VERSION_MAJOR EQUAL 6)
 endif()
 
 # ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+enable_testing()
+
+set(TEST_FILES
+    tests/TestDragGridLayout.cpp
+    tests/TestDragGridWidget.cpp
+)
+
+foreach(test_file ${TEST_FILES})
+    get_filename_component(test_name ${test_file} NAME_WE)
+    add_executable(${test_name} ${test_file})
+    target_link_libraries(${test_name} PRIVATE DragGrid Qt${QT_VERSION_MAJOR}::Test)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
+
+# ---------------------------------------------------------------------------
 # Install / export
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
@@ -101,7 +116,6 @@ install(TARGETS DragGrid GridLayoutDemo
 install(FILES
     DragGridLayout.h
     DragGridWidget.h
-    GridDragController.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 

@@ -7,6 +7,7 @@
 #include <QPointer>
 #include <QSize>
 
+class QEvent;
 class QPropertyAnimation;
 class QWidget;
 
@@ -74,6 +75,7 @@ private:
     };
 
     void invalidate() override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
     QSize effectiveCellSize(const QRect &contentRect) const;
     QSize minimumCellSizeForItems() const;

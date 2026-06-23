@@ -10,7 +10,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    m_customDraggableGrid = new DragGridWidget(ui->scrollArea_2,this);
+    m_customDraggableGrid = new DragGridWidget(ui->scrollArea_2, this);
     m_customDraggableGrid->setDragEnabled(true);
     m_customDraggableGrid->setColumnCount(4);
     connect(m_customDraggableGrid, &DragGridWidget::orderChanged, this, &MainWindow::slot_orderChanged);
