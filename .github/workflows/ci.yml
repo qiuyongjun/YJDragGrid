@@ -12,8 +12,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-13]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         qt-version: ['5.15.2', '6.8.0']
+        exclude:
+          # Qt 5.15.2 does not provide arm64 macOS binaries, and the Intel runner
+          # (macos-13) is often heavily queued. Test macOS only with Qt 6.
+          - os: macos-latest
+            qt-version: '5.15.2'
 
     steps:
       - name: Checkout
@@ -33,9 +38,6 @@ jobs:
           CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
           if [ "${{ runner.os }}" = "macOS" ]; then
             CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
-            if [ "${{ matrix.qt-version }}" = "5.15.2" ]; then
-              CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_ARCHITECTURES=x86_64"
-            fi
           fi
           cmake -S . -B build $CMAKE_ARGS
 
