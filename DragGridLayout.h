@@ -76,7 +76,7 @@ public:
     // 按当前顺序返回布局管理的控件。
     QList<QWidget *> widgets() const;
     // 返回控件在布局中的索引，未找到返回 -1。
-    int indexOf(const QWidget *widget) const;
+    int indexOf(const QWidget *widget) const override;
     // 取出指定索引控件并释放布局项，不销毁控件。
     QWidget *takeWidget(int index);
     // 移动布局项到移动后的最终索引，索引无效或未变化时返回 false。

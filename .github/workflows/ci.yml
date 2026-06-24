@@ -39,7 +39,7 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
-          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
+          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DQTDRAGGRID_BUILD_DEMO=OFF"
           if [ "${{ runner.os }}" = "macOS" ]; then
             CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
           fi
@@ -51,7 +51,7 @@ jobs:
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        run: cmake -S . -B build
+        run: cmake -S . -B build -DQTDRAGGRID_BUILD_DEMO=OFF
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
