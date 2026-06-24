@@ -204,7 +204,8 @@ void TestDragGridWidget::escapeDuringDrag_restoresOriginalOrder()
     QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
 
     QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
-    QTest::mouseMove(&grid, third->geometry().center());
+    // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
+    QTest::mouseMove(&grid, third->geometry().center() + QPoint(60, 0));
     QTest::keyClick(&grid, Qt::Key_Escape);
     QCoreApplication::processEvents();
 
@@ -225,7 +226,8 @@ void TestDragGridWidget::deleteWidget_duringDrag_removesDraggedWidget()
     QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
 
     QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
-    QTest::mouseMove(&grid, second->geometry().center());
+    // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
+    QTest::mouseMove(&grid, second->geometry().center() + QPoint(60, 0));
     grid.deleteWidget(first);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     QCoreApplication::processEvents();
@@ -246,7 +248,8 @@ void TestDragGridWidget::setDragEnabled_falseDuringDrag_cancelsDrag()
     QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
 
     QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
-    QTest::mouseMove(&grid, third->geometry().center());
+    // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
+    QTest::mouseMove(&grid, third->geometry().center() + QPoint(60, 0));
     grid.setDragEnabled(false);
     QCoreApplication::processEvents();
 
@@ -267,7 +270,8 @@ void TestDragGridWidget::zeroAnimationDuration_reordersDirectly()
     grid.setDragEnabled(true);
     grid.setAnimationDuration(0);
 
-    dragFromTo(&grid, first->geometry().center(), second->geometry().center());
+    // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
+    dragFromTo(&grid, first->geometry().center(), second->geometry().center() + QPoint(60, 0));
 
     QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second"),
                                                        QStringLiteral("first")}));
