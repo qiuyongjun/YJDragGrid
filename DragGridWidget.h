@@ -51,7 +51,7 @@ public:
     // 设置单元格最小尺寸，避免控件被压缩到不可用大小。
     void setMinimumCellSize(const QSize &size);
 
-    // 启用或禁用拖拽；禁用时会先结束正在进行的拖拽。
+    // 启用或禁用拖拽；禁用时会取消正在进行的拖拽。
     void setDragEnabled(bool enable);
     // 返回是否允许拖拽重排。
     bool dragEnabled() const;

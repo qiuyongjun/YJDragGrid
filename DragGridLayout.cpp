@@ -296,13 +296,13 @@ bool DragGridLayout::moveItem(int from, int to)
         return false;
     }
 
-    const int targetIndex = qBound(0, to, m_items.size());
+    const int targetIndex = qBound(0, to, m_items.size() - 1);
     if (from == targetIndex) {
         return false;
     }
 
     Item item = m_items.takeAt(from);
-    m_items.insert(qBound(0, targetIndex, m_items.size()), item);
+    m_items.insert(targetIndex, item);
     invalidate();
     return true;
 }
@@ -465,6 +465,12 @@ QRect DragGridLayout::cellRect(int index, const QRect &contentRect, int columns,
 void DragGridLayout::setWidgetGeometryAnimated(QWidget *widget, const QRect &target)
 {
     if (!widget || widget->geometry() == target) {
+        return;
+    }
+
+    if (m_animationDuration <= 0) {
+        stopAnimationForWidget(widget);
+        widget->setGeometry(target);
         return;
     }
 

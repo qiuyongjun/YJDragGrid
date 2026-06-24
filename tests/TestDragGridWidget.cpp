@@ -1,5 +1,7 @@
 #include <QTest>
 #include <QLabel>
+#include <QLayout>
+#include <QSignalSpy>
 #include <QScrollArea>
 #include <QWidget>
 
@@ -15,8 +17,62 @@ private slots:
     void dragHandle_canBeSet();
     void emptyText_defaultAndCustom();
     void emptyStateVisible_togglesVisibility();
-    void setDragEnabled_falseDuringDrag_doesNotCrash();
+    void mouseDrag_reordersWidgets();
+    void keyboardDrag_reordersWidgets();
+    void escapeDuringDrag_restoresOriginalOrder();
+    void deleteWidget_duringDrag_removesDraggedWidget();
+    void setDragEnabled_falseDuringDrag_cancelsDrag();
+    void zeroAnimationDuration_reordersDirectly();
 };
+
+namespace {
+
+QWidget *createItem(const QString &name)
+{
+    auto *widget = new QWidget;
+    widget->setObjectName(name);
+    widget->setMinimumSize(100, 100);
+    widget->resize(100, 100);
+    return widget;
+}
+
+void prepareGrid(DragGridWidget *grid, QWidget *first, QWidget *second, QWidget *third = nullptr)
+{
+    grid->setColumnCount(3);
+    grid->setMinimumCellSize(QSize(100, 100));
+    grid->setAnimationDuration(0);
+    grid->resize(360, 140);
+    grid->show();
+    QVERIFY(QTest::qWaitForWindowExposed(grid));
+
+    grid->addWidget(first);
+    grid->addWidget(second);
+    if (third) {
+        grid->addWidget(third);
+    }
+    grid->layout()->activate();
+    QCoreApplication::processEvents();
+}
+
+QStringList objectNames(const QList<QWidget *> &widgets)
+{
+    QStringList names;
+    for (QWidget *widget : widgets) {
+        names << widget->objectName();
+    }
+    return names;
+}
+
+void dragFromTo(DragGridWidget *grid, const QPoint &from, const QPoint &to)
+{
+    QTest::mousePress(grid, Qt::LeftButton, Qt::NoModifier, from);
+    QTest::mouseMove(grid, from + QPoint(30, 0));
+    QTest::mouseMove(grid, to);
+    QTest::mouseRelease(grid, Qt::LeftButton, Qt::NoModifier, to);
+    QCoreApplication::processEvents();
+}
+
+} // namespace
 
 void TestDragGridWidget::dragEnabled_togglesState()
 {
@@ -97,21 +153,126 @@ void TestDragGridWidget::emptyStateVisible_togglesVisibility()
     QVERIFY(!label->isHidden());
 }
 
-void TestDragGridWidget::setDragEnabled_falseDuringDrag_doesNotCrash()
+void TestDragGridWidget::mouseDrag_reordersWidgets()
 {
-    QScrollArea scrollArea;
-    auto *grid = new DragGridWidget(&scrollArea);
-    auto *widget = new QWidget(grid);
-    grid->addWidget(widget);
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    auto *third = createItem(QStringLiteral("third"));
+    prepareGrid(&grid, first, second, third);
+    grid.setDragEnabled(true);
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
 
-    grid->setDragEnabled(true);
+    dragFromTo(&grid, first->geometry().center(), third->geometry().center() + QPoint(60, 0));
 
-    // 通过反射模拟内部拖拽启动（无法直接调用私有 startDragOperation），
-    // 这里至少验证在普通状态下禁用不会崩溃。
-    grid->setDragEnabled(false);
-    QVERIFY(!grid->dragEnabled());
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second"),
+                                                       QStringLiteral("third"),
+                                                       QStringLiteral("first")}));
+    QCOMPARE(orderSpy.count(), 1);
+    QVERIFY(first->isVisible());
+}
 
-    delete grid; // widget 随 grid 一起删除
+void TestDragGridWidget::keyboardDrag_reordersWidgets()
+{
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    prepareGrid(&grid, first, second);
+    grid.setDragEnabled(true);
+    first->setFocus();
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+
+    QTest::keyClick(&grid, Qt::Key_Space);
+    QTest::keyClick(&grid, Qt::Key_Right);
+    QTest::keyClick(&grid, Qt::Key_Return);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second"),
+                                                       QStringLiteral("first")}));
+    QCOMPARE(orderSpy.count(), 1);
+    QVERIFY(first->isVisible());
+}
+
+void TestDragGridWidget::escapeDuringDrag_restoresOriginalOrder()
+{
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    auto *third = createItem(QStringLiteral("third"));
+    prepareGrid(&grid, first, second, third);
+    grid.setDragEnabled(true);
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+
+    QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
+    QTest::mouseMove(&grid, third->geometry().center() + QPoint(60, 0));
+    QTest::keyClick(&grid, Qt::Key_Escape);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("first"),
+                                                       QStringLiteral("second"),
+                                                       QStringLiteral("third")}));
+    QCOMPARE(orderSpy.count(), 0);
+    QVERIFY(first->isVisible());
+}
+
+void TestDragGridWidget::deleteWidget_duringDrag_removesDraggedWidget()
+{
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    prepareGrid(&grid, first, second);
+    grid.setDragEnabled(true);
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+
+    QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
+    QTest::mouseMove(&grid, second->geometry().center() + QPoint(60, 0));
+    grid.deleteWidget(first);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second")}));
+    QCOMPARE(orderSpy.count(), 0);
+    QVERIFY(second->isVisible());
+}
+
+void TestDragGridWidget::setDragEnabled_falseDuringDrag_cancelsDrag()
+{
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    auto *third = createItem(QStringLiteral("third"));
+    prepareGrid(&grid, first, second, third);
+    grid.setDragEnabled(true);
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+
+    QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
+    QTest::mouseMove(&grid, third->geometry().center() + QPoint(60, 0));
+    grid.setDragEnabled(false);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("first"),
+                                                       QStringLiteral("second"),
+                                                       QStringLiteral("third")}));
+    QCOMPARE(orderSpy.count(), 0);
+    QVERIFY(!grid.dragEnabled());
+    QVERIFY(first->isVisible());
+}
+
+void TestDragGridWidget::zeroAnimationDuration_reordersDirectly()
+{
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    prepareGrid(&grid, first, second);
+    grid.setDragEnabled(true);
+    grid.setAnimationDuration(0);
+
+    dragFromTo(&grid, first->geometry().center(), second->geometry().center() + QPoint(60, 0));
+
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second"),
+                                                       QStringLiteral("first")}));
+    QCOMPARE(first->geometry().top(), second->geometry().top());
+    QVERIFY(first->geometry().left() > second->geometry().left());
 }
 
 QTEST_MAIN(TestDragGridWidget)

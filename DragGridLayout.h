@@ -79,7 +79,7 @@ public:
     int indexOf(const QWidget *widget) const;
     // 取出指定索引控件并释放布局项，不销毁控件。
     QWidget *takeWidget(int index);
-    // 移动布局项到目标索引，索引无效或未变化时返回 false。
+    // 移动布局项到移动后的最终索引，索引无效或未变化时返回 false。
     bool moveItem(int from, int to);
     // 返回指定视觉索引对应的单元格矩形。
     QRect cellRectForIndex(int index, const QRect &contentsRect) const;

@@ -100,9 +100,9 @@ QWidget *DragGridWidget::takeWidget(int index)
         return nullptr;
     }
 
-    // 若目标控件正在拖拽，先完成拖拽落位，避免 takeAt 后 reorderForPlaceholder 找不到该控件。
+    // 删除拖拽中的控件时按取消处理，避免把临时占位顺序提交为业务顺序。
     if (targetWidget == m_draggedWidget) {
-        finishDrag();
+        cancelDrag();
         index = m_gridLayout->indexOf(targetWidget);
     }
 
@@ -166,9 +166,8 @@ void DragGridWidget::setMinimumCellSize(const QSize &size)
 void DragGridWidget::setDragEnabled(bool enable)
 {
     if (!enable && m_dragState == DragState::Dragging) {
-        if (finishDrag()) {
-            m_gridLayout->activate();
-        }
+        cancelDrag();
+        m_gridLayout->activate();
     }
     m_dragState = DragState::Idle;
     m_pressWidget = nullptr;
@@ -511,6 +510,9 @@ void DragGridWidget::startDragOperation(QWidget *widget, const QPoint &offset, b
     }
 
     const int originalIndex = indexOfWidget(widget);
+    if (originalIndex < 0) {
+        return;
+    }
     m_keyboardDragStartIndex = originalIndex;
 
     m_draggedWidget = widget;
@@ -700,7 +702,7 @@ bool DragGridWidget::finishDrag()
     if (draggedWidget) {
         if (targetRect.isValid()) {
             // 如果幽灵可见，从幽灵位置动画归位；否则直接落位。
-            if (ghostRect.isValid()) {
+            if (ghostRect.isValid() && m_animationDuration > 0) {
                 draggedWidget->setGeometry(ghostRect);
                 draggedWidget->show();
 
