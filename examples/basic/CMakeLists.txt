@@ -45,9 +45,13 @@ if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(QtDragGridDemo)
 endif()
 
-if(QTDRAGGRID_INSTALL)
+if(QTDRAGGRID_INSTALL AND QTDRAGGRID_INSTALL_EXAMPLES)
     install(TARGETS QtDragGridDemo
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         BUNDLE DESTINATION .
+    )
+
+    install(FILES "${QSS_FILE}"
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()

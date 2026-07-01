@@ -1,0 +1,143 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-package:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            qt-version: '5.15.2'
+            qt-major: qt5
+          - os: ubuntu-latest
+            qt-version: '6.8.0'
+            qt-major: qt6
+          - os: windows-latest
+            qt-version: '5.15.2'
+            qt-major: qt5
+          - os: windows-latest
+            qt-version: '6.8.0'
+            qt-major: qt6
+          - os: macos-latest
+            qt-version: '6.9.3'
+            qt-major: qt6
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt-version }}
+          cache: true
+
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+        run: |
+          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DQTDRAGGRID_BUILD_EXAMPLES=OFF -DQTDRAGGRID_BUILD_TESTS=ON"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
+          fi
+          cmake -S . -B build $CMAKE_ARGS
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build -DQTDRAGGRID_BUILD_EXAMPLES=OFF -DQTDRAGGRID_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test (Unix)
+        if: runner.os != 'Windows'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build --output-on-failure -C Release
+
+      - name: Install
+        run: cmake --install build --prefix build/install --config Release
+
+      - name: Configure installed consumer (Unix)
+        if: runner.os != 'Windows'
+        run: cmake -S tests/consumer -B build/consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ github.workspace }}/build/install"
+
+      - name: Configure installed consumer (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S tests/consumer -B build/consumer -DCMAKE_PREFIX_PATH="${{ github.workspace }}/build/install"
+
+      - name: Build installed consumer
+        run: cmake --build build/consumer --config Release
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ASSET="QtDragGrid-${GITHUB_REF_NAME}-${{ runner.os }}-${{ matrix.qt-major }}.tar.gz"
+          tar czf "$ASSET" -C build/install .
+          echo "ASSET_PATH=$ASSET" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $asset = "QtDragGrid-$env:GITHUB_REF_NAME-${{ runner.os }}-${{ matrix.qt-major }}.zip"
+          Compress-Archive -Path build/install/* -DestinationPath $asset
+          "ASSET_PATH=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ runner.os }}-${{ matrix.qt-major }}
+          path: ${{ env.ASSET_PATH }}
+          if-no-files-found: error
+
+  release:
+    needs: build-package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Extract changelog notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v version="$VERSION" '
+            $0 ~ "^## \\[" version "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+
+          if [ ! -s RELEASE_NOTES.md ]; then
+            {
+              echo "Release ${GITHUB_REF_NAME}"
+              echo
+              echo "No matching CHANGELOG.md entry was found."
+            } > RELEASE_NOTES.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: dist/*
+          fail_on_unmatched_files: true
