@@ -129,6 +129,23 @@ grid->addWidget(new MyCardWidget());
 
 默认情况下整张卡片都可拖拽。如需限制仅在某个子控件（如标题栏）上启动拖拽，请使用 `setDragHandle(widget)`。手柄控件必须是已添加到 `DragGridWidget` 的卡片的子控件，所有权仍归卡片所有。
 
+## 定位与未来计划
+
+YJDragGrid 的定位不是替代 `QGridLayout`，而是补足 Qt Widgets 在“动态卡片网格”场景中的能力：适合仪表盘、配置面板、插件面板、素材管理器等需要添加、删除、拖拽重排少量到中等数量 `QWidget` 卡片的界面。
+
+### v0.4.0 目标
+
+- 拖拽状态信号：补充 `dragStarted`、`dragPlaceholderChanged`、`dragCanceled`、`dragFinished`，便于业务层同步保存状态、更新按钮和展示提示。
+- 每卡片拖拽手柄：支持为每个卡片解析自己的拖拽区域，优先考虑 `setDragHandleProvider(...)`，避免所有卡片只能共用一个全局手柄。
+- 查询与重排 API：补充 `widgetAt(index)`、`indexOf(widget)`、`moveWidget(from, to)`，让业务代码不必直接操作 `widgets()` 返回值。
+- 边界测试与文档：覆盖拖拽中删除、禁用、清空、插入控件，以及手动重排后的信号和生命周期规则。
+
+### 暂不计划
+
+- 响应式列数：当前业务重点是相同大小卡片的固定规则网格，暂不把自动列数作为近期目标。
+- 瀑布流、跨行/跨列卡片、QML 支持：这些会显著扩大复杂度，暂不纳入 QWidget 版核心范围。
+- 大量 item 虚拟化：当前 `DragGridWidget` 面向少量到中等数量 QWidget 卡片；大量数据场景未来可单独评估 `YJDragGridView`。
+
 ## 项目结构
 
 ```
