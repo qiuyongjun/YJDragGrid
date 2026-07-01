@@ -9,7 +9,9 @@ class MainWindow;
 }
 QT_END_NAMESPACE
 
+namespace QtDragGrid {
 class DragGridWidget;
+}
 
 class MainWindow : public QMainWindow
 {
@@ -43,6 +45,6 @@ private:
 
     Ui::MainWindow *ui;
 
-    DragGridWidget *m_customDraggableGrid = nullptr;
+    QtDragGrid::DragGridWidget *m_customDraggableGrid = nullptr;
 };
 #endif // MAINWINDOW_H

@@ -5,4 +5,9 @@ find_dependency(Qt@QT_VERSION_MAJOR@ COMPONENTS Widgets)
 
 include("${CMAKE_CURRENT_LIST_DIR}/QtDragGridTargets.cmake")
 
+if(NOT TARGET DragGrid AND TARGET QtDragGrid::QtDragGrid)
+    add_library(DragGrid INTERFACE IMPORTED)
+    target_link_libraries(DragGrid INTERFACE QtDragGrid::QtDragGrid)
+endif()
+
 check_required_components(QtDragGrid)

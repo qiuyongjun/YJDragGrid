@@ -6,6 +6,8 @@
 #include <QSize>
 #include <QWidget>
 
+#include <QtDragGrid/QtDragGridGlobal.h>
+
 class QLabel;
 class QKeyEvent;
 class QMouseEvent;
@@ -13,9 +15,12 @@ class QPropertyAnimation;
 class QResizeEvent;
 class QScrollArea;
 class QTimer;
+
+namespace QtDragGrid {
+
 class DragGridLayout;
 
-class DragGridWidget : public QWidget
+class QTDRAGGRID_EXPORT DragGridWidget : public QWidget
 {
     Q_OBJECT
 
@@ -197,5 +202,7 @@ private:
     QString m_emptyText = QStringLiteral("No items.");
     bool m_emptyStateVisible = true;
 };
+
+} // namespace QtDragGrid
 
 #endif // DRAGGRIDWIDGET_H

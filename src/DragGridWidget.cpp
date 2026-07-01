@@ -1,6 +1,6 @@
-#include "DragGridWidget.h"
+#include <QtDragGrid/DragGridWidget.h>
 
-#include "DragGridLayout.h"
+#include <QtDragGrid/DragGridLayout.h>
 
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
@@ -15,6 +15,8 @@
 #include <QScrollArea>
 #include <QTimer>
 #include <QtGlobal>
+
+namespace QtDragGrid {
 
 DragGridWidget::DragGridWidget(QScrollArea *scrollArea, QWidget *parent)
     : QWidget(parent)
@@ -916,3 +918,5 @@ void DragGridWidget::autoScroll()
         hBar->setValue(qBound(hBar->minimum(), hBar->value() + dx, hBar->maximum()));
     }
 }
+
+} // namespace QtDragGrid

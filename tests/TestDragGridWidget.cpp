@@ -6,7 +6,9 @@
 #include <QScrollArea>
 #include <QWidget>
 
-#include "DragGridWidget.h"
+#include <QtDragGrid/DragGridWidget.h>
+
+using QtDragGrid::DragGridWidget;
 
 class TestDragGridWidget : public QObject
 {

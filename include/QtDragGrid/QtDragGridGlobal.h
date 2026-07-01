@@ -1,0 +1,14 @@
+#ifndef QTDRAGGRIDGLOBAL_H
+#define QTDRAGGRIDGLOBAL_H
+
+#include <QtGlobal>
+
+#if defined(QTDRAGGRID_STATIC)
+#  define QTDRAGGRID_EXPORT
+#elif defined(QTDRAGGRID_LIBRARY)
+#  define QTDRAGGRID_EXPORT Q_DECL_EXPORT
+#else
+#  define QTDRAGGRID_EXPORT Q_DECL_IMPORT
+#endif
+
+#endif // QTDRAGGRIDGLOBAL_H

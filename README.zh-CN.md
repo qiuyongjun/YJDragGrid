@@ -52,23 +52,38 @@ ctest --test-dir build --output-on-failure
 
 ### 作为库使用
 
-QtDragGrid 默认会构建一个名为 `DragGrid` 的静态库，演示程序链接该库。你可以在自己的项目中这样使用：
+直接从源码引入：
 
 ```cmake
-add_subdirectory(path/to/GridLayout)
-target_link_libraries(YourApp PRIVATE DragGrid)
+add_subdirectory(path/to/QtDragGrid)
+target_link_libraries(YourApp PRIVATE QtDragGrid::QtDragGrid)
+```
+
+也可以安装后通过 CMake package 使用：
+
+```bash
+cmake -S . -B build -DQTDRAGGRID_BUILD_EXAMPLES=OFF
+cmake --build build --config Release
+cmake --install build --prefix /path/to/install
+```
+
+```cmake
+find_package(QtDragGrid CONFIG REQUIRED)
+target_link_libraries(YourApp PRIVATE QtDragGrid::QtDragGrid)
 ```
 
 然后在代码中：
 
 ```cpp
-#include <DragGridWidget.h>
+#include <QtDragGrid/DragGridWidget.h>
 
-DragGridWidget *grid = new DragGridWidget(scrollArea, parent);
+auto *grid = new QtDragGrid::DragGridWidget(scrollArea, parent);
 grid->setDragEnabled(true);
 grid->setColumnCount(4);
 grid->addWidget(new MyCardWidget());
 ```
+
+为兼容旧项目，仍保留 `DragGrid` 目标别名和 `<DragGridWidget.h>` 旧 include 路径。
 
 ### 主要 API
 
@@ -114,12 +129,11 @@ grid->addWidget(new MyCardWidget());
 
 ```
 .
-├── DragGridLayout.*        # 自定义 QLayout 实现
-├── DragGridWidget.*        # 拖拽重排容器控件
-├── CardWidget.*            # 演示用卡片控件
-├── MainWindow.* / main.cpp # 演示程序入口
+├── include/QtDragGrid/     # 公共头文件
+├── src/                    # 库实现
+├── examples/basic/         # 演示程序
 ├── tests/                  # 单元测试
-├── style.qss               # 演示样式表
+├── cmake/                  # CMake package 配置模板
 ├── CMakeLists.txt          # 构建配置
 └── .github/workflows/      # CI 配置
 ```

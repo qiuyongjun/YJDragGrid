@@ -52,23 +52,38 @@ ctest --test-dir build --output-on-failure
 
 ### Use as a library
 
-QtDragGrid is built as a static library `DragGrid` linked to the demo executable. To use it in your own project:
+Use QtDragGrid directly from source:
 
 ```cmake
-add_subdirectory(path/to/GridLayout)
-target_link_libraries(YourApp PRIVATE DragGrid)
+add_subdirectory(path/to/QtDragGrid)
+target_link_libraries(YourApp PRIVATE QtDragGrid::QtDragGrid)
+```
+
+Or install it and consume the exported CMake package:
+
+```bash
+cmake -S . -B build -DQTDRAGGRID_BUILD_EXAMPLES=OFF
+cmake --build build --config Release
+cmake --install build --prefix /path/to/install
+```
+
+```cmake
+find_package(QtDragGrid CONFIG REQUIRED)
+target_link_libraries(YourApp PRIVATE QtDragGrid::QtDragGrid)
 ```
 
 Then in your code:
 
 ```cpp
-#include <DragGridWidget.h>
+#include <QtDragGrid/DragGridWidget.h>
 
-DragGridWidget *grid = new DragGridWidget(scrollArea, parent);
+auto *grid = new QtDragGrid::DragGridWidget(scrollArea, parent);
 grid->setDragEnabled(true);
 grid->setColumnCount(4);
 grid->addWidget(new MyCardWidget());
 ```
+
+The legacy `DragGrid` target and `<DragGridWidget.h>` include path are kept as compatibility aliases.
 
 ### API Overview
 
@@ -114,12 +129,11 @@ By default the whole card is draggable. To restrict dragging to a specific sub-w
 
 ```
 .
-├── DragGridLayout.*        # Custom QLayout implementation
-├── DragGridWidget.*        # Drag-and-drop container widget
-├── CardWidget.*            # Sample card widget used in the demo
-├── MainWindow.* / main.cpp # Demo application entry point
+├── include/QtDragGrid/     # Public headers
+├── src/                    # Library implementation
+├── examples/basic/         # Demo application
 ├── tests/                  # Unit tests
-├── style.qss               # Demo stylesheet
+├── cmake/                  # CMake package config template
 ├── CMakeLists.txt          # Build configuration
 └── .github/workflows/      # CI configuration
 ```

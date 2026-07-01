@@ -2,12 +2,14 @@
 #include "ui_MainWindow.h"
 
 #include "CardWidget.h"
-#include "DragGridWidget.h"
+#include <QtDragGrid/DragGridWidget.h>
 
 #include <QAbstractSpinBox>
 #include <QCheckBox>
 #include <QSlider>
 #include <QSpinBox>
+
+using QtDragGrid::DragGridWidget;
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -131,4 +133,3 @@ void MainWindow::refreshWidgetLabels()
                                   .arg(m_customDraggableGrid->count()));
     }
 }
-

@@ -1,7 +1,9 @@
 #include <QTest>
 #include <QWidget>
 
-#include "DragGridLayout.h"
+#include <QtDragGrid/DragGridLayout.h>
+
+using QtDragGrid::DragGridLayout;
 
 class TestDragGridLayout : public QObject
 {
