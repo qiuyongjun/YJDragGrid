@@ -1,11 +1,13 @@
 #include <QTest>
 #include <QLabel>
 #include <QLayout>
+#include <QMetaProperty>
 #include <QMouseEvent>
 #include <QSignalSpy>
 #include <QScrollArea>
 #include <QWidget>
 
+#include <DragGridWidget.h>
 #include <QtDragGrid/DragGridWidget.h>
 
 using QtDragGrid::DragGridWidget;
@@ -15,6 +17,8 @@ class TestDragGridWidget : public QObject
     Q_OBJECT
 
 private slots:
+    void metaProperties_areExposed();
+    void compatibilityHeader_exposesLegacyTypeName();
     void dragEnabled_togglesState();
     void fillIncompleteRowEnabled_roundTripAndCompat();
     void placeholderProperties_roundTrip();
@@ -22,6 +26,7 @@ private slots:
     void emptyText_defaultAndCustom();
     void emptyStateVisible_togglesVisibility();
     void mouseDrag_reordersWidgets();
+    void keyboardDrag_emitsDetailedSignals();
     void keyboardDrag_reordersWidgets();
     void escapeDuringDrag_restoresOriginalOrder();
     void deleteWidget_duringDrag_removesDraggedWidget();
@@ -93,6 +98,29 @@ void dragFromTo(DragGridWidget *grid, const QPoint &from, const QPoint &to)
 }
 
 } // namespace
+
+void TestDragGridWidget::metaProperties_areExposed()
+{
+    DragGridWidget grid;
+    const QMetaObject *meta = grid.metaObject();
+
+    QVERIFY(meta->indexOfProperty("columnCount") >= 0);
+    QVERIFY(meta->indexOfProperty("dragEnabled") >= 0);
+    QVERIFY(meta->indexOfProperty("animationDuration") >= 0);
+    QVERIFY(meta->indexOfProperty("emptyText") >= 0);
+
+    QVERIFY(grid.setProperty("columnCount", 2));
+    QCOMPARE(grid.columnCount(), 2);
+    QVERIFY(grid.setProperty("dragEnabled", true));
+    QVERIFY(grid.dragEnabled());
+}
+
+void TestDragGridWidget::compatibilityHeader_exposesLegacyTypeName()
+{
+    ::DragGridWidget grid;
+    grid.setColumnCount(2);
+    QCOMPARE(grid.columnCount(), 2);
+}
 
 void TestDragGridWidget::dragEnabled_togglesState()
 {
@@ -197,7 +225,7 @@ void TestDragGridWidget::mouseDrag_reordersWidgets()
     auto *third = createItem(QStringLiteral("third"));
     prepareGrid(&grid, first, second, third);
     grid.setDragEnabled(true);
-    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+    QSignalSpy orderSpy(&grid, QOverload<>::of(&DragGridWidget::orderChanged));
 
     dragFromTo(&grid, first->geometry().center(), third->geometry().center() + QPoint(60, 0));
 
@@ -218,7 +246,7 @@ void TestDragGridWidget::keyboardDrag_reordersWidgets()
     grid.activateWindow();
     first->setFocus();
     QCoreApplication::processEvents();
-    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+    QSignalSpy orderSpy(&grid, QOverload<>::of(&DragGridWidget::orderChanged));
 
     QTest::keyClick(&grid, Qt::Key_Space);
     QTest::keyClick(&grid, Qt::Key_Right);
@@ -231,6 +259,39 @@ void TestDragGridWidget::keyboardDrag_reordersWidgets()
     QVERIFY(first->isVisible());
 }
 
+void TestDragGridWidget::keyboardDrag_emitsDetailedSignals()
+{
+    qRegisterMetaType<QList<QWidget *>>();
+
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    prepareGrid(&grid, first, second);
+    grid.setDragEnabled(true);
+    grid.activateWindow();
+    first->setFocus();
+    QCoreApplication::processEvents();
+
+    QSignalSpy movedSpy(&grid, &DragGridWidget::itemMoved);
+    QSignalSpy detailedOrderSpy(&grid, QOverload<const QList<QWidget *> &>::of(&DragGridWidget::orderChanged));
+    QSignalSpy legacyOrderSpy(&grid, QOverload<>::of(&DragGridWidget::orderChanged));
+
+    QTest::keyClick(&grid, Qt::Key_Space);
+    QTest::keyClick(&grid, Qt::Key_Right);
+    QTest::keyClick(&grid, Qt::Key_Return);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(movedSpy.count(), 1);
+    const QList<QVariant> movedArguments = movedSpy.takeFirst();
+    QCOMPARE(movedArguments.at(0).toInt(), 0);
+    QCOMPARE(movedArguments.at(1).toInt(), 1);
+
+    QCOMPARE(detailedOrderSpy.count(), 1);
+    const QList<QWidget *> orderedWidgets = qvariant_cast<QList<QWidget *>>(detailedOrderSpy.takeFirst().at(0));
+    QCOMPARE(objectNames(orderedWidgets), QStringList({QStringLiteral("second"), QStringLiteral("first")}));
+    QCOMPARE(legacyOrderSpy.count(), 1);
+}
+
 void TestDragGridWidget::escapeDuringDrag_restoresOriginalOrder()
 {
     DragGridWidget grid;
@@ -239,7 +300,7 @@ void TestDragGridWidget::escapeDuringDrag_restoresOriginalOrder()
     auto *third = createItem(QStringLiteral("third"));
     prepareGrid(&grid, first, second, third);
     grid.setDragEnabled(true);
-    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+    QSignalSpy orderSpy(&grid, QOverload<>::of(&DragGridWidget::orderChanged));
 
     QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
     // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
@@ -261,7 +322,7 @@ void TestDragGridWidget::deleteWidget_duringDrag_removesDraggedWidget()
     auto *second = createItem(QStringLiteral("second"));
     prepareGrid(&grid, first, second);
     grid.setDragEnabled(true);
-    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+    QSignalSpy orderSpy(&grid, QOverload<>::of(&DragGridWidget::orderChanged));
 
     QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
     // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
@@ -283,7 +344,7 @@ void TestDragGridWidget::setDragEnabled_falseDuringDrag_cancelsDrag()
     auto *third = createItem(QStringLiteral("third"));
     prepareGrid(&grid, first, second, third);
     grid.setDragEnabled(true);
-    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+    QSignalSpy orderSpy(&grid, QOverload<>::of(&DragGridWidget::orderChanged));
 
     QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
     // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
@@ -416,7 +477,7 @@ void TestDragGridWidget::mouseDrag_reordersWithStretchedLastRow()
     QCoreApplication::processEvents();
 
     grid.setDragEnabled(true);
-    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+    QSignalSpy orderSpy(&grid, QOverload<>::of(&DragGridWidget::orderChanged));
 
     dragFromTo(&grid, first->geometry().center(), sixth->geometry().center());
 

@@ -87,6 +87,8 @@ grid->addWidget(new MyCardWidget());
 
 ### 主要 API
 
+公共行为契约见 [docs/api.md](docs/api.md)。
+
 - `void setDragEnabled(bool enable)` — 启用/禁用拖拽重排。
 - `void setColumnCount(int count)` — 设置列数。
 - `void setMinimumCellSize(const QSize &size)` — 设置单元格最小尺寸。
@@ -98,6 +100,8 @@ grid->addWidget(new MyCardWidget());
 - `void clear()` — 清空并销毁所有子控件。
 - `int count() const` / `QList<QWidget *> widgets() const` — 查询当前子控件。
 - `void orderChanged()` — 用户通过拖拽改变顺序时发出的信号。
+- `void itemMoved(int from, int to)` — 用户拖拽改变顺序后发出移动前后的索引。
+- `void orderChanged(const QList<QWidget *> &widgets)` — 用户拖拽改变顺序后发出完整顺序。
 - `int dragThreshold() / void setDragThreshold(int)` — 触发拖拽的按压移动阈值（像素，默认 6）。
 - `qreal ghostScale() / void setGhostScale(qreal)` — 拖拽镜像缩放比例（默认 1.05）。
 - `int animationDuration() / void setAnimationDuration(int)` — 布局过渡动画时长，单位毫秒（默认 200）。

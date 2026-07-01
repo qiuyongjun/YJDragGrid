@@ -49,6 +49,18 @@ jobs:
         if: runner.os != 'Windows'
         run: cmake --build build --config Release
 
+      - name: Install (Unix)
+        if: runner.os != 'Windows'
+        run: cmake --install build --prefix build/install
+
+      - name: Configure installed consumer (Unix)
+        if: runner.os != 'Windows'
+        run: cmake -S tests/consumer -B build/consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ github.workspace }}/build/install"
+
+      - name: Build installed consumer (Unix)
+        if: runner.os != 'Windows'
+        run: cmake --build build/consumer --config Release
+
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         run: cmake -S . -B build -DQTDRAGGRID_BUILD_DEMO=OFF
@@ -56,6 +68,18 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: cmake --build build --config Release
+
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --install build --prefix build/install --config Release
+
+      - name: Configure installed consumer (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S tests/consumer -B build/consumer -DCMAKE_PREFIX_PATH="${{ github.workspace }}/build/install"
+
+      - name: Build installed consumer (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --build build/consumer --config Release
 
       - name: Test (Unix)
         if: runner.os != 'Windows'

@@ -23,6 +23,22 @@ class DragGridLayout;
 class QTDRAGGRID_EXPORT DragGridWidget : public QWidget
 {
     Q_OBJECT
+    Q_PROPERTY(int columnCount READ columnCount WRITE setColumnCount)
+    Q_PROPERTY(QSize minimumCellSize READ minimumCellSize WRITE setMinimumCellSize)
+    Q_PROPERTY(bool dragEnabled READ dragEnabled WRITE setDragEnabled)
+    Q_PROPERTY(int dragThreshold READ dragThreshold WRITE setDragThreshold)
+    Q_PROPERTY(qreal ghostScale READ ghostScale WRITE setGhostScale)
+    Q_PROPERTY(int scrollTimerInterval READ scrollTimerInterval WRITE setScrollTimerInterval)
+    Q_PROPERTY(int animationDuration READ animationDuration WRITE setAnimationDuration)
+    Q_PROPERTY(int autoScrollMargin READ autoScrollMargin WRITE setAutoScrollMargin)
+    Q_PROPERTY(int autoScrollMaxSpeed READ autoScrollMaxSpeed WRITE setAutoScrollMaxSpeed)
+    Q_PROPERTY(qreal placeholderOpacity READ placeholderOpacity WRITE setPlaceholderOpacity)
+    Q_PROPERTY(int placeholderPulseDuration READ placeholderPulseDuration WRITE setPlaceholderPulseDuration)
+    Q_PROPERTY(bool equalCellSizeEnabled READ equalCellSizeEnabled WRITE setEqualCellSizeEnabled)
+    Q_PROPERTY(bool fillIncompleteRowEnabled READ fillIncompleteRowEnabled WRITE setFillIncompleteRowEnabled)
+    Q_PROPERTY(bool compactWhenSparseEnabled READ compactWhenSparseEnabled WRITE setCompactWhenSparseEnabled)
+    Q_PROPERTY(QString emptyText READ emptyText WRITE setEmptyText)
+    Q_PROPERTY(bool emptyStateVisible READ emptyStateVisible WRITE setEmptyStateVisible)
 
 public:
     // 创建拖拽网格容器；传入滚动区域后可启用拖拽边缘自动滚动。
@@ -132,6 +148,10 @@ public:
 signals:
     // 用户通过拖拽改变控件顺序后发出。
     void orderChanged();
+    // 用户拖拽导致单个控件位置变化后发出。
+    void itemMoved(int from, int to);
+    // 用户拖拽改变顺序后发出当前完整顺序。
+    void orderChanged(const QList<QWidget *> &widgets);
 
 protected:
     void mousePressEvent(QMouseEvent* event) override;
@@ -147,7 +167,7 @@ private:
     enum class DragState { Idle, Pressed, Dragging };
 
     int indexOfWidget(const QWidget *widget) const;
-    bool reorderForPlaceholder();
+    bool reorderForPlaceholder(int *from = nullptr, int *to = nullptr);
     void startDragOperation(QWidget *widget, const QPoint &offset, bool grabMouse = true);
     bool finishDrag();
     void cancelDrag();
@@ -204,5 +224,7 @@ private:
 };
 
 } // namespace QtDragGrid
+
+Q_DECLARE_METATYPE(QList<QWidget *>)
 
 #endif // DRAGGRIDWIDGET_H

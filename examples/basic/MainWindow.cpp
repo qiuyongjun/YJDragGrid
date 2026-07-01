@@ -19,7 +19,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_customDraggableGrid = new DragGridWidget(ui->scrollArea_2, this);
     m_customDraggableGrid->setEmptyText(QStringLiteral("暂无卡片，点击“添加卡片”开始演示"));
-    connect(m_customDraggableGrid, &DragGridWidget::orderChanged, this, &MainWindow::slot_orderChanged);
+    connect(m_customDraggableGrid, QOverload<>::of(&DragGridWidget::orderChanged),
+            this, &MainWindow::slot_orderChanged);
     ui->gridLayout->addWidget(m_customDraggableGrid);
 
     setupDemoControls();

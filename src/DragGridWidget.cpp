@@ -675,15 +675,21 @@ void DragGridWidget::cancelDrag()
     }
 }
 
-bool DragGridWidget::reorderForPlaceholder()
+bool DragGridWidget::reorderForPlaceholder(int *from, int *to)
 {
     if (!m_draggedWidget) {
         return false;
     }
 
-    const int from = indexOfWidget(m_draggedWidget);
-    const int to = m_gridLayout->placeholderIndex();
-    return m_gridLayout->moveItem(from, to);
+    const int sourceIndex = indexOfWidget(m_draggedWidget);
+    const int targetIndex = m_gridLayout->placeholderIndex();
+    if (from) {
+        *from = sourceIndex;
+    }
+    if (to) {
+        *to = targetIndex;
+    }
+    return m_gridLayout->moveItem(sourceIndex, targetIndex);
 }
 
 bool DragGridWidget::finishDrag()
@@ -696,7 +702,9 @@ bool DragGridWidget::finishDrag()
     QWidget *draggedWidget = m_draggedWidget;
     const int finalPlaceholderIndex = m_gridLayout->placeholderIndex();
 
-    const bool hasOrderChanged = reorderForPlaceholder();
+    int movedFrom = -1;
+    int movedTo = -1;
+    const bool hasOrderChanged = reorderForPlaceholder(&movedFrom, &movedTo);
     m_gridLayout->setIgnoredWidget(nullptr);
     m_gridLayout->setPlaceholderIndex(-1);
 
@@ -752,6 +760,8 @@ bool DragGridWidget::finishDrag()
     }
 
     if (hasOrderChanged) {
+        emit itemMoved(movedFrom, movedTo);
+        emit orderChanged(widgets());
         emit orderChanged();
     }
     return true;
