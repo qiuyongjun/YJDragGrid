@@ -22,7 +22,7 @@ jobs:
           - os: windows-latest
             qt-version: '6.8.0'
           - os: macos-latest
-            qt-version: '6.8.0'
+            qt-version: '6.9.3'
 
     steps:
       - name: Checkout
