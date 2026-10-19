@@ -36,6 +36,7 @@ private slots:
     void emptyStateVisible_togglesVisibility();
     void mouseDrag_reordersWidgets();
     void mouseDrag_fastReleaseLeftHalfKeepsOrder();
+    void mouseDrag_steadyStateDropMatchesCursor();
     void keyboardDrag_emitsDetailedSignals();
     void keyboardDrag_reordersWidgets();
     void escapeDuringDrag_restoresOriginalOrder();
@@ -107,8 +108,12 @@ QStringList objectNames(const QList<QWidget *> &widgets)
     return names;
 }
 
-void dragFromTo(DragGridWidget *grid, const QPoint &from, const QPoint &to)
+void dragThroughPoints(DragGridWidget *grid, const QPoint &from,
+                       const QList<QPoint> &waypoints, const QPoint &to)
 {
+    // 与 dragFromTo 相同的事件序列，但支持任意多个中间 move 事件：
+    // 稳态落点行为（占位符已离位、被拖项原始索引 ≠ 当前占位索引）
+    // 需要至少一次使占位符移动的 move 才能覆盖。
     // CI 的 offscreen 后端对 QTest::mouseMove 的按键状态处理不稳定，这里显式携带 LeftButton。
     auto sendMouse = [grid](QEvent::Type type, const QPoint &pos,
                             Qt::MouseButton button, Qt::MouseButtons buttons) {
@@ -122,10 +127,19 @@ void dragFromTo(DragGridWidget *grid, const QPoint &from, const QPoint &to)
     sendMouse(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
     sendMouse(QEvent::MouseMove, from + QPoint(30, 0), Qt::NoButton, Qt::LeftButton);
     QCoreApplication::processEvents();
+    for (const QPoint &waypoint : waypoints) {
+        sendMouse(QEvent::MouseMove, waypoint, Qt::NoButton, Qt::LeftButton);
+        QCoreApplication::processEvents();
+    }
     sendMouse(QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
     QCoreApplication::processEvents();
     sendMouse(QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton);
     QCoreApplication::processEvents();
+}
+
+void dragFromTo(DragGridWidget *grid, const QPoint &from, const QPoint &to)
+{
+    dragThroughPoints(grid, from, {}, to);
 }
 
 } // namespace
@@ -290,6 +304,39 @@ void TestDragGridWidget::mouseDrag_fastReleaseLeftHalfKeepsOrder()
                                                        QStringLiteral("second"),
                                                        QStringLiteral("third")}));
     QCOMPARE(orderSpy.count(), 0);
+    QVERIFY(first->isVisible());
+}
+
+void TestDragGridWidget::mouseDrag_steadyStateDropMatchesCursor()
+{
+    // 特征测试：占位符移动后（被拖项原始索引 ≠ 当前占位索引），落点补偿
+    // 必须以当前占位索引为基准，落点 = 光标左侧已渲染项数。
+    // 复现修复前故障：按被拖项原始索引补偿——拖 first 越过 second 进入
+    // 稳态后，悬停占位格（second 原槽位）左半区会把占位符从光标下向左
+    // 挤走一格，释放结果仍是 [first, second, third]。
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    auto *third = createItem(QStringLiteral("third"));
+    prepareGrid(&grid, first, second, third);
+    grid.setDragEnabled(true);
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+
+    const QRect secondCell = second->geometry();
+    const QRect thirdCell = third->geometry();
+
+    // first → third 左半区（占位符进入 second 与 third 之间，进入稳态），
+    // 再悬停占位格左半区释放：占位符不得逃逸，落点钉在 second 之前。
+    const QList<QPoint> waypoints{
+        QPoint(thirdCell.left() + thirdCell.width() / 4, thirdCell.center().y())};
+    dragThroughPoints(&grid, first->geometry().center(), waypoints,
+                      QPoint(secondCell.left() + secondCell.width() / 4,
+                             secondCell.center().y()));
+
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second"),
+                                                       QStringLiteral("first"),
+                                                       QStringLiteral("third")}));
+    QCOMPARE(orderSpy.count(), 1);
     QVERIFY(first->isVisible());
 }
 

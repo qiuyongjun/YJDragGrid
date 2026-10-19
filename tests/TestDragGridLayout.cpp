@@ -32,6 +32,7 @@ private slots:
     void placeholderRect_usesStretchedIncompleteRow();
     void externalDelete_removesItemAndKeepsLayoutUsable();
     void addItem_managesWidgetLifecycle();
+    void targetIndexAt_compensatesByCurrentPlaceholderIndex();
     void minimumCellSize_reflectsRuntimeWidgetMinimumSize();
     void minimumSize_widthCoversOccupiedColumns();
 };
@@ -477,6 +478,56 @@ void TestDragGridLayout::addItem_managesWidgetLifecycle()
     QCOMPARE(layout.indexOf(managed), 0);
 
     clearLayout(&layout);
+}
+
+void TestDragGridLayout::targetIndexAt_compensatesByCurrentPlaceholderIndex()
+{
+    // 特征测试：拖拽稳态（占位索引 ≠ 被拖项原始索引）下，落点必须等于
+    // "光标左侧已渲染项数"，补偿基准是被保留的占位槽（当前占位索引），
+    // 而不是被拖项的原始索引。
+    // 复现修复前故障：按原始索引补偿——占位符右移后，悬停占位格左半区
+    // 会把占位符从光标下向左挤走一格（悬停左半区/右半区行为不对称）；
+    // 占位符左移后悬停项目左半区落点过冲一位。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(3);
+    layout->setMinimumCellSize(QSize(100, 100));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+    container.resize(360, 140);
+
+    auto *first = createLayoutItem();
+    auto *second = createLayoutItem();
+    auto *third = createLayoutItem();
+    first->setParent(&container);
+    second->setParent(&container);
+    third->setParent(&container);
+    layout->addWidget(first);
+    layout->addWidget(second);
+    layout->addWidget(third);
+    const int y = 70; // 单行内任意 y
+
+    // 拖拽起始态（占位 0 = 被拖项原始索引）：快速释放路径的回归保障。
+    layout->setIgnoredWidget(first);
+    layout->setPlaceholderIndex(0);
+    layout->activate();
+    QCOMPARE(layout->targetIndexAt(QPoint(150, y)), 0); // second 格左半区：插在 second 前
+    QCOMPARE(layout->targetIndexAt(QPoint(400, y)), 2); // 越过右边界：追加到末尾
+
+    // 稳态（向右拖）：first 越过 second，占位 1，second 已移入 0 号格，
+    // 占位格即 second 的原槽位 [120, 240)。
+    layout->setPlaceholderIndex(1);
+    layout->activate();
+    QCOMPARE(layout->targetIndexAt(QPoint(150, y)), 1); // 占位格左半区：原地不动
+    QCOMPARE(layout->targetIndexAt(QPoint(30, y)), 0);  // second 新位置左半区：插其前
+
+    // 稳态（向左拖）：third 越过 first、second，占位 0，first/second 右移一格。
+    layout->setIgnoredWidget(third);
+    layout->setPlaceholderIndex(0);
+    layout->activate();
+    QCOMPARE(layout->targetIndexAt(QPoint(150, y)), 0); // first 新位置左半区：插其前
+    QCOMPARE(layout->targetIndexAt(QPoint(270, y)), 1); // second 新位置左半区：插其前
 }
 
 void TestDragGridLayout::minimumCellSize_reflectsRuntimeWidgetMinimumSize()

@@ -651,12 +651,15 @@ int DragGridLayout::targetIndexAt(const QPoint &pos) const
 
     const int slotIndex = targetIndexInRow(pos, row, contentRect, columns, cellSize, itemCount);
 
-    // 拖拽中被拖项的占位槽被保留：占位槽右侧的项目已向左挪一格，光标命中的
-    // 静态单元格序号比"排除被拖项后的插入位"大 1。不补偿时，快速拖拽
-    // （一两个 move 事件即释放）的落点会向右过冲一位，且方向不对称。
-    // 键盘拖拽直接写 placeholderIndex，不经此路径，不受补偿影响。
-    const int draggedIndex = m_ignoredWidget ? indexOf(m_ignoredWidget) : -1;
-    const int insertionIndex = draggedIndex >= 0 && draggedIndex < slotIndex
+    // 拖拽中被拖项的占位槽被保留：光标命中的是"含占位槽"的静态单元格序号，
+    // 换算为"排除被拖项后的插入位"时，位于占位槽右侧的序号要减 1。补偿
+    // 基准用当前占位索引而非被拖项的原始索引：拖拽开始时两者相等，快速
+    // 释放（一两个 move 事件即释放）正确；占位符移动后若仍按原始索引补偿，
+    // 稳态落点会过冲，悬停占位格时占位符会从光标下逃走一格。以占位索引
+    // 补偿时，落点恒等于"光标左侧已渲染项数"，悬停占位格任何半区都原地
+    // 不动。键盘拖拽直接写 placeholderIndex，不经此路径，不受补偿影响。
+    const int placeholderIndex = m_ignoredWidget ? m_placeholderIndex : -1;
+    const int insertionIndex = placeholderIndex >= 0 && placeholderIndex < slotIndex
             ? slotIndex - 1
             : slotIndex;
     return qBound(0, insertionIndex, m_items.size() - 1);
