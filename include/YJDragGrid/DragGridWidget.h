@@ -62,7 +62,7 @@ public:
     int columnCount() const;
     // 设置布局列数，非法值会被限制为至少 1 列。
     void setColumnCount(int columnCount);
-    // 返回网格中受布局管理的控件数量。
+    // 返回布局项数量，含 spacer 等非 widget 项；控件顺序请用 widgets()。
     int count() const;
     // 按当前顺序返回所有子控件。
     QList<QWidget *> widgets() const;
@@ -170,7 +170,7 @@ private:
     enum class DragState { Idle, Pressed, Dragging };
 
     int indexOfWidget(const QWidget *widget) const;
-    bool reorderForPlaceholder(int *from = nullptr, int *to = nullptr);
+    bool reorderForPlaceholder();
     // 从网格摘除控件：卸载事件过滤器、断开 destroyed 回调、隐藏并清除父子关系。
     void detachWidget(QWidget *widget);
     // 在受管控件及其后代上安装/卸载拖拽按键过滤器。

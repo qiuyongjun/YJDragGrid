@@ -9,6 +9,11 @@
 
 ### Fixed
 
+- 键盘拖拽进行中按下鼠标左键不再覆盖拖拽状态机：此前被隐藏的卡片会永久丢失、拖拽镜像残留，且 `Escape` / `Enter` 全部失效。现在先取消键盘拖拽，再按正常流程判定本次按下。
+- 几何动画结束后释放 `QPropertyAnimation` 对象：此前只摘除表项，动画对象以卡片为父对象长期留存，每次重排都会新增一批。
+- 卡片加入网格之后才创建的子控件也会安装按键过滤器（`ChildAdded`）：此前运行期构建的按钮会吞掉 `Space`，使该卡片无法用键盘拾取。
+- 边缘自动滚动把边缘距离收窄到视口尺寸，并按 `qint64` 计算平方，消除 `margin * margin` 的整型溢出。
+- 键盘拖拽改用 `QApplication::focusWidget()` 判定焦点，不再因 `QWidget::focusWidget()` 返回过期结果而拾取到错误的卡片。
 - 键盘拖拽期间不再触发边缘自动滚动：`autoScroll()` 仅在鼠标抓取有效（真实鼠标拖拽）时执行，键盘拖拽的视口滚动仍由占位符可见性保证。
 - 外部直接销毁受管控件（不经 `removeWidget()` / `deleteWidget()`）时，`DragGridLayout` 自动摘除对应布局项并清理动画表项，消除布局计算中的 use-after-free。
 - 拖拽中的控件被外部销毁时，`DragGridWidget` 安全终止拖拽并清理占位符、镜像与鼠标抓取状态。
@@ -33,6 +38,8 @@
 
 ### Changed
 
+- `itemMoved(int from, int to)` 的索引改按 `widgets()` 控件序报告，与 `orderUpdated()` 保持一致；布局含非 widget 项时不再错位。
+- 空状态改为按控件数判断：布局里只剩 spacer 时也会显示提示（`count()` 仍返回布局项数量，语义未变）。
 - `setGhostScale()` 增加 `3.0` 上限，避免按面积增长的镜像位图占用过多内存。
 - `DragGridLayout` 补齐 `Q_OBJECT`，`qobject_cast` 可以识别该类型。
 - 构造 `DragGridWidget` 时注册 `QList<QWidget *>` 元类型，`orderUpdated` 可直接用于队列连接。

@@ -6,6 +6,7 @@
 #include <QAbstractScrollArea>
 #include <QAbstractSlider>
 #include <QApplication>
+#include <QChildEvent>
 #include <QComboBox>
 #include <QFrame>
 #include <QGraphicsDropShadowEffect>
@@ -502,6 +503,13 @@ void DragGridWidget::mousePressEvent(QMouseEvent *event)
         return;
     }
 
+    // 键盘拖拽进行中不得被鼠标按下覆盖状态：否则 m_draggedWidget 成为孤儿，
+    // 被隐藏的卡片无人恢复，Escape/Enter 也因状态不是 Dragging 而失效。
+    // 取消当前拖拽后按正常流程重新判定目标，允许用户直接用鼠标接着拖。
+    if (m_dragState != DragState::Idle) {
+        cancelDrag();
+    }
+
     QWidget *hitWidget = childAt(event->pos());
     if (!hitWidget) {
         QWidget::mousePressEvent(event);
@@ -661,6 +669,16 @@ void DragGridWidget::resizeEvent(QResizeEvent *event)
 
 bool DragGridWidget::eventFilter(QObject *watched, QEvent *event)
 {
+    // 卡片加入网格后才创建的子控件不会经过 insertWidget()，必须在这里补装过滤器。
+    // 否则运行期构建的按钮会吞掉 Space，键盘拾取对该卡片失效。
+    if (event->type() == QEvent::ChildAdded) {
+        auto *childEvent = static_cast<QChildEvent *>(event);
+        if (auto *childWidget = qobject_cast<QWidget *>(childEvent->child())) {
+            installDragKeyFilters(childWidget);
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
     if (m_dragEnable) {
         if (event->type() == QEvent::KeyRelease && m_dragState == DragState::Dragging) {
             auto *releaseEvent = static_cast<QKeyEvent *>(event);
@@ -787,8 +805,10 @@ bool DragGridWidget::startDragOperation(QWidget *widget, const QPoint &offset, b
 
 void DragGridWidget::startKeyboardDrag()
 {
-    QWidget *focus = focusWidget();
-    if (!focus) {
+    // 必须用应用级当前焦点：QWidget::focusWidget() 返回的是"最后一个获得过焦点的子控件"，
+    // 焦点已经移出网格时它会给出过期结果，导致按 Space 拾取到错误的卡片。
+    QWidget *focus = QApplication::focusWidget();
+    if (!focus || (focus != this && !isAncestorOf(focus))) {
         return;
     }
 
@@ -917,21 +937,13 @@ void DragGridWidget::cancelDrag()
     m_gridLayout->activate();
 }
 
-bool DragGridWidget::reorderForPlaceholder(int *from, int *to)
+bool DragGridWidget::reorderForPlaceholder()
 {
     if (!m_draggedWidget) {
         return false;
     }
 
-    const int sourceIndex = indexOfWidget(m_draggedWidget);
-    const int targetIndex = m_gridLayout->placeholderIndex();
-    if (from) {
-        *from = sourceIndex;
-    }
-    if (to) {
-        *to = targetIndex;
-    }
-    return m_gridLayout->moveItem(sourceIndex, targetIndex);
+    return m_gridLayout->moveItem(indexOfWidget(m_draggedWidget), m_gridLayout->placeholderIndex());
 }
 
 bool DragGridWidget::finishDrag()
@@ -943,9 +955,11 @@ bool DragGridWidget::finishDrag()
 
     QWidget *draggedWidget = m_draggedWidget;
 
-    int movedFrom = -1;
-    int movedTo = -1;
-    const bool hasOrderChanged = reorderForPlaceholder(&movedFrom, &movedTo);
+    // 对外报告的索引以 widgets() 的控件序为准；布局序可能含非 widget 项，
+    // 直接暴露会让调用方与 orderUpdated() 给出的顺序对不上。
+    const int movedFrom = widgets().indexOf(draggedWidget);
+    const bool hasOrderChanged = reorderForPlaceholder();
+    const int movedTo = widgets().indexOf(draggedWidget);
     m_gridLayout->setIgnoredWidget(nullptr);
     m_gridLayout->setPlaceholderIndex(-1);
 
@@ -1087,7 +1101,9 @@ void DragGridWidget::clearDragGhost()
 
 void DragGridWidget::updateEmptyState()
 {
-    const bool show = (count() == 0) && m_emptyStateVisible;
+    // 空状态判断基于"是否有受管控件"，而不是布局项数：调用方通过 layout()->addItem()
+    // 加入的 spacer 会让 count() 大于 0，但网格里一张卡片也没有。
+    const bool show = widgets().isEmpty() && m_emptyStateVisible;
     m_emptyStateLabel->setVisible(show);
     if (show) {
         m_emptyStateLabel->setGeometry(rect().adjusted(20, 20, -20, -20));
@@ -1123,14 +1139,12 @@ void DragGridWidget::autoScroll()
         return;
     }
 
-    const int margin = m_autoScrollMargin;
     const int maxSpeed = m_autoScrollMaxSpeed;
     if (maxSpeed <= 0) {
         // 速度为 0（或负值）时按"不自动滚动"处理，避免 edgeSpeed 的
         // qBound 上界小于下界导致速度退化为常量 1。
         return;
     }
-    const int marginSquared = qMax(1, margin * margin);
 
     const QPoint mouseInViewport = m_scrollArea->viewport()->mapFromGlobal(QCursor::pos());
 
@@ -1142,6 +1156,11 @@ void DragGridWidget::autoScroll()
 
     const int viewportHeight = m_scrollArea->viewport()->height();
     const int viewportWidth = m_scrollArea->viewport()->width();
+
+    // 边缘区不得超过视口：否则水平/垂直两个方向会同时命中，且 margin*margin
+    // 在 int 下会符号溢出（UB）。先收窄到视口尺寸，再按 qint64 求平方。
+    const int margin = qMin(m_autoScrollMargin, qMax(1, qMin(viewportWidth, viewportHeight)));
+    const qint64 marginSquared = qMax<qint64>(1, qint64(margin) * qint64(margin));
 
     // 越靠近边缘滚动越快，平方曲线能减少刚进入边缘区域时的突兀跳动；
     // 速度在 margin 处饱和于 maxSpeed，远离边缘不会无限加速，也避免乘法溢出。

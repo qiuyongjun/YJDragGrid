@@ -539,8 +539,14 @@ void DragGridLayout::setWidgetGeometryAnimated(QWidget *widget, const QRect &tar
         animation = new QPropertyAnimation(widget, "geometry", widget);
         animation->setEasingCurve(QEasingCurve::OutCubic);
         m_geometryAnimations[widget] = animation;
-        connect(animation, &QPropertyAnimation::finished, this, [this, widget]() {
+        // 结束后必须释放动画对象：只摘除表项会让它以控件为父对象长期留存，
+        // 每次重排都会新增一批，长时间运行持续增长。
+        const QPointer<QPropertyAnimation> guard(animation);
+        connect(animation, &QPropertyAnimation::finished, this, [this, widget, guard]() {
             m_geometryAnimations.remove(widget);
+            if (guard) {
+                guard->deleteLater();
+            }
         });
     }
     animation->setDuration(m_animationDuration);

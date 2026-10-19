@@ -61,6 +61,9 @@ private slots:
     void externalDelete_otherCardDuringDrag_keepsPlaceholderInRange();
     void spaceInCardLineEdit_typesSpaceInsteadOfDragging();
     void nestedGrid_keepsKeyHandlingOnInnerGrid();
+    void mousePressDuringKeyboardDrag_doesNotHideCard();
+    void geometryAnimations_areReleasedAfterReorder();
+    void spaceOnLateAddedCardButton_startsDrag();
 };
 
 namespace {
@@ -1083,6 +1086,139 @@ void TestDragGridWidget::nestedGrid_keepsKeyHandlingOnInnerGrid()
     QTest::keyClick(innerFirst, Qt::Key_Return);
     QCoreApplication::processEvents();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+}
+
+void TestDragGridWidget::mousePressDuringKeyboardDrag_doesNotHideCard()
+{
+    // 特征测试：键盘拖拽进行中按下鼠标左键，不得覆盖拖拽状态机。
+    // 修复前 mousePressEvent 会把状态改成 Pressed，m_draggedWidget 成为孤儿，
+    // 卡片永久隐藏、镜像残留，Escape/Enter 都失效。
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    prepareGrid(&grid, first, second);
+    grid.setDragEnabled(true);
+    grid.activateWindow();
+    first->setFocus();
+    QCoreApplication::processEvents();
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+
+    QTest::keyClick(&grid, Qt::Key_Space);
+    QCoreApplication::processEvents();
+    QVERIFY(grid.findChild<QLabel *>(QStringLiteral("GridDragGhost")));
+
+    auto sendMouse = [&grid](QEvent::Type type, const QPoint &pos,
+                             Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, pos, grid.mapToGlobal(pos), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(&grid, &event);
+    };
+    const QPoint clickPos = second->geometry().center();
+    sendMouse(QEvent::MouseButtonPress, clickPos, Qt::LeftButton, Qt::LeftButton);
+    sendMouse(QEvent::MouseButtonRelease, clickPos, Qt::LeftButton, Qt::NoButton);
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents();
+
+    QVERIFY(first->isVisible());
+    QCOMPARE(orderSpy.count(), 0);
+    QVERIFY(!grid.findChild<QLabel *>(QStringLiteral("GridDragGhost")));
+    auto *placeholder = grid.findChild<QWidget *>(QStringLiteral("GridPlaceholder"));
+    QVERIFY(placeholder);
+    QVERIFY(!placeholder->isVisible());
+
+    // 取消后仍可继续键盘拖拽。
+    first->setFocus();
+    QCoreApplication::processEvents();
+    QTest::keyClick(&grid, Qt::Key_Space);
+    QTest::keyClick(&grid, Qt::Key_Right);
+    QTest::keyClick(&grid, Qt::Key_Return);
+    QCoreApplication::processEvents();
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second"),
+                                                       QStringLiteral("first")}));
+}
+
+void TestDragGridWidget::geometryAnimations_areReleasedAfterReorder()
+{
+    // 特征测试：几何动画结束后必须释放动画对象，不能只摘除表项。
+    // 修复前动画对象以卡片为父对象留存，每次重排都会新增一批，长期运行持续增长。
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    auto *third = createItem(QStringLiteral("third"));
+    grid.setColumnCount(3);
+    grid.setMinimumCellSize(QSize(100, 100));
+    grid.setAnimationDuration(120);
+    grid.resize(360, 140);
+    grid.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&grid));
+    grid.addWidget(first);
+    grid.addWidget(second);
+    grid.addWidget(third);
+    grid.setDragEnabled(true);
+    grid.layout()->activate();
+    QCoreApplication::processEvents();
+
+    auto geometryAnimations = [](QWidget *widget) {
+        int count = 0;
+        const QList<QPropertyAnimation *> animations = widget->findChildren<QPropertyAnimation *>();
+        for (QPropertyAnimation *animation : animations) {
+            if (animation->propertyName() == QByteArrayLiteral("geometry")) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    for (int round = 0; round < 3; ++round) {
+        QWidget *mover = grid.widgets().first();
+        QWidget *target = grid.widgets().last();
+        dragFromTo(&grid, mover->geometry().center(), target->geometry().center() + QPoint(60, 0));
+        QTest::qWait(300);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::processEvents();
+
+        QVERIFY2(geometryAnimations(mover) <= 1,
+                 qPrintable(QStringLiteral("round %1: %2 leaked animations")
+                                .arg(round).arg(geometryAnimations(mover))));
+    }
+}
+
+void TestDragGridWidget::spaceOnLateAddedCardButton_startsDrag()
+{
+    // 特征测试：卡片加入网格之后才创建的子控件，也必须被按键过滤器覆盖。
+    // 修复前过滤器只在 addWidget() 时安装，运行期新增的按钮会吞掉 Space 拾取。
+    DragGridWidget grid;
+    auto *card = new QWidget;
+    card->setObjectName(QStringLiteral("card"));
+    card->setMinimumSize(100, 100);
+    card->resize(100, 100);
+    auto *cardLayout = new QVBoxLayout(card);
+
+    auto *second = createItem(QStringLiteral("second"));
+    prepareGrid(&grid, card, second);
+
+    // 先加入网格，再补齐子控件（模拟运行期构建界面的卡片）。
+    auto *button = new QPushButton(QStringLiteral("close"), card);
+    cardLayout->addWidget(button);
+    grid.setDragEnabled(true);
+    grid.activateWindow();
+
+    button->setFocus();
+    QCoreApplication::processEvents();
+    QCOMPARE(QApplication::focusWidget(), static_cast<QWidget *>(button));
+
+    QSignalSpy clickedSpy(button, &QPushButton::clicked);
+    QTest::keyClick(button, Qt::Key_Space);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(clickedSpy.count(), 0);
+    QVERIFY(grid.findChild<QLabel *>(QStringLiteral("GridDragGhost")));
+
+    QTest::keyClick(button, Qt::Key_Return);
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QVERIFY(!grid.findChild<QLabel *>(QStringLiteral("GridDragGhost")));
+    QVERIFY(card->isVisible());
 }
 
 QTEST_MAIN(TestDragGridWidget)

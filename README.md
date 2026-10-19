@@ -44,6 +44,8 @@ cmake --build build --config Release
 ./build/YJDragGridDemo
 ```
 
+> 使用 Visual Studio 等多配置生成器时，可执行文件位于 `build/Release/` 下。
+
 ### 运行测试
 
 ```bash
@@ -98,9 +100,9 @@ grid->addWidget(new MyCardWidget());
 - `void addWidget(QWidget *widget)` / `void insertWidget(int index, QWidget *widget)` — 添加子控件。
 - `void removeWidget(QWidget *widget)` / `void deleteWidget(QWidget *widget)` / `QWidget *takeWidget(int index)` — 移除子控件。
 - `void clear()` — 清空并销毁所有子控件。
-- `int count() const` / `QList<QWidget *> widgets() const` — 查询当前子控件。
+- `int count() const` — 布局项数量（含 spacer 等非 widget 项）；`QList<QWidget *> widgets() const` — 当前控件顺序。
 - `void orderChanged()` — 用户通过拖拽改变顺序时发出的信号。
-- `void itemMoved(int from, int to)` — 用户拖拽改变顺序后发出移动前后的索引。
+- `void itemMoved(int from, int to)` — 用户拖拽改变顺序后发出移动前后的索引（按 `widgets()` 顺序）。
 - `void orderUpdated(const QList<QWidget *> &widgets)` — 用户拖拽改变顺序后发出完整顺序。
 - `int dragThreshold() / void setDragThreshold(int)` — 触发拖拽的按压移动阈值（像素，默认 6）。
 - `qreal ghostScale() / void setGhostScale(qreal)` — 拖拽镜像缩放比例（默认 1.05，取值 1.0–3.0）。

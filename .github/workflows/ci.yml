@@ -92,3 +92,23 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build --output-on-failure -C Release
+
+  # 示例程序不属于库的构建产物，但它是 dragHandle / QScrollArea 唯一的集成样例。
+  # 单独跑一个 job，避免示例随 API 演进而无人编译。
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.0'
+          cache: true
+
+      - name: Configure examples
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DYJDRAGGRID_BUILD_EXAMPLES=ON -DYJDRAGGRID_BUILD_TESTS=OFF
+
+      - name: Build examples
+        run: cmake --build build --config Release
