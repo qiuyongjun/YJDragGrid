@@ -2,6 +2,8 @@
 
 #include <YJDragGrid/DragGridLayout.h>
 
+#include <QCursor>
+#include <QApplication>
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
 #include <QKeyEvent>
@@ -56,6 +58,14 @@ DragGridWidget::DragGridWidget(QScrollArea *scrollArea, QWidget *parent)
     updateEmptyState();
 }
 
+DragGridWidget::~DragGridWidget()
+{
+    // 基类析构会按创建顺序销毁子控件：网格布局、定时器等先于卡片死亡，
+    // 而卡片的 destroyed 处理器仍会被触发。置位标记让处理器直接退出，
+    // 避免在析构期触碰已销毁的内部对象。
+    m_destructing = true;
+}
+
 void DragGridWidget::addWidget(QWidget *widget)
 {
     insertWidget(count(), widget);
@@ -67,8 +77,49 @@ void DragGridWidget::insertWidget(int index, QWidget *widget)
         return;
     }
 
+    // 布局先连接 destroyed（其回调先摘除布局项）；本类回调后连接、后执行，
+    // 执行时 count() 已不含被销毁控件，空状态刷新才能得到准确结果。
     m_gridLayout->insertWidget(index, widget);
+
+    // 控件被外部直接销毁时安全终止拖拽，避免 m_draggedWidget / m_pressWidget 悬垂。
+    connect(widget, &QObject::destroyed, this, [this](QObject *obj) {
+        handleWidgetDestroyed(obj);
+    });
+
     widget->show();
+    updateEmptyState();
+    updateGeometry();
+}
+
+void DragGridWidget::handleWidgetDestroyed(QObject *obj)
+{
+    if (m_destructing) {
+        return;
+    }
+
+    if (m_dragState == DragState::Idle) {
+        // 布局侧回调已先摘除布局项；此处补齐容器侧的空状态刷新。
+        updateEmptyState();
+        updateGeometry();
+        return;
+    }
+
+    if (obj != static_cast<QObject *>(m_draggedWidget)
+        && obj != static_cast<QObject *>(m_pressWidget)) {
+        // 拖拽/按压目标之外的其他受管控件被外部销毁：布局侧已摘除布局项，
+        // 这里补齐空状态与几何刷新即可，不终止进行中的拖拽。
+        updateEmptyState();
+        updateGeometry();
+        return;
+    }
+
+    // cleanupDragUi() 不触碰被拖拽控件，可安全在控件析构中调用；
+    // 忽略标记和占位符索引需先复位，让布局回到无占位状态。
+    if (m_dragState == DragState::Dragging) {
+        m_gridLayout->setIgnoredWidget(nullptr);
+        m_gridLayout->setPlaceholderIndex(-1);
+    }
+    cleanupDragUi();
     updateEmptyState();
     updateGeometry();
 }
@@ -113,6 +164,8 @@ QWidget *DragGridWidget::takeWidget(int index)
         return nullptr;
     }
 
+    // 控件已脱离网格，断开 destroyed 回调，避免移除后的销毁触发无关的状态刷新。
+    disconnect(targetWidget, &QObject::destroyed, this, nullptr);
     targetWidget->hide();
     targetWidget->setParent(nullptr);
     updatePlaceholder();
@@ -273,6 +326,13 @@ void DragGridWidget::setPlaceholderOpacity(qreal opacity)
     if (opacityEffect) {
         opacityEffect->setOpacity(m_placeholderOpacity);
     }
+
+    // 脉冲关键帧在构造时按初始透明度固定，改透明度必须同步，否则脉冲仍在旧区间振荡。
+    if (m_placeholderPulseAnimation) {
+        m_placeholderPulseAnimation->setStartValue(qMax(0.0, m_placeholderOpacity * 0.6));
+        m_placeholderPulseAnimation->setKeyValueAt(0.5, qMin(1.0, m_placeholderOpacity * 1.4));
+        m_placeholderPulseAnimation->setEndValue(qMax(0.0, m_placeholderOpacity * 0.6));
+    }
 }
 
 int DragGridWidget::placeholderPulseDuration() const
@@ -393,7 +453,14 @@ void DragGridWidget::mouseMoveEvent(QMouseEvent *event)
 {
     if (m_dragState == DragState::Pressed) {
         if ((event->pos() - m_pressPos).manhattanLength() > m_dragThreshold) {
-            startDragOperation(m_pressWidget, m_pressOffset);
+            // 启动失败（如按住的控件已被程序移除）时不得进入 Dragging，
+            // 否则状态机卡死：cancelDrag 会因 m_draggedWidget 为空而直接返回。
+            if (!startDragOperation(m_pressWidget, m_pressOffset)) {
+                m_dragState = DragState::Idle;
+                m_pressWidget = nullptr;
+                QWidget::mouseMoveEvent(event);
+                return;
+            }
             m_dragState = DragState::Dragging;
         } else {
             return;
@@ -406,7 +473,6 @@ void DragGridWidget::mouseMoveEvent(QMouseEvent *event)
     }
 
     const QPoint cursorPos = event->pos();
-    m_lastMousePos = cursorPos;
     updateDragGhostPosition(cursorPos);
 
     const int placeholderIndex = m_gridLayout->targetIndexAt(cursorPos);
@@ -515,15 +581,15 @@ int DragGridWidget::indexOfWidget(const QWidget *widget) const
     return m_gridLayout->indexOf(widget);
 }
 
-void DragGridWidget::startDragOperation(QWidget *widget, const QPoint &offset, bool grabMouse)
+bool DragGridWidget::startDragOperation(QWidget *widget, const QPoint &offset, bool grabMouse)
 {
     if (!widget) {
-        return;
+        return false;
     }
 
     const int originalIndex = indexOfWidget(widget);
     if (originalIndex < 0) {
-        return;
+        return false;
     }
     m_keyboardDragStartIndex = originalIndex;
 
@@ -532,6 +598,14 @@ void DragGridWidget::startDragOperation(QWidget *widget, const QPoint &offset, b
     m_dragGhostCursorOffset = QPoint();
 
     createDragGhost(widget);
+
+    // 焦点若在被拖拽控件（或其子控件）上，先收走焦点再隐藏：
+    // 否则焦点会转移到下一个控件，QScrollArea 会随之滚动视口（Qt 6.9+ 行为），
+    // 表现为拖拽一开始内容就跳走。
+    QWidget *focusedWidget = QApplication::focusWidget();
+    if (focusedWidget && (focusedWidget == widget || widget->isAncestorOf(focusedWidget))) {
+        focusedWidget->clearFocus();
+    }
     widget->hide();
 
     m_gridLayout->setIgnoredWidget(widget);
@@ -544,9 +618,12 @@ void DragGridWidget::startDragOperation(QWidget *widget, const QPoint &offset, b
     }
 
     if (grabMouse) {
+        // 边缘自动滚动依赖真实鼠标位置，只在鼠标拖拽（已抓取鼠标）时启动定时器；
+        // 键盘拖拽的视口滚动由 ensurePlaceholderVisible() 负责。
         QWidget::grabMouse();
+        m_scrollTimer->start();
     }
-    m_scrollTimer->start();
+    return true;
 }
 
 void DragGridWidget::startKeyboardDrag()
@@ -568,7 +645,9 @@ void DragGridWidget::startKeyboardDrag()
         return;
     }
 
-    startDragOperation(targetWidget, QPoint(targetWidget->width() / 2, targetWidget->height() / 2), false);
+    if (!startDragOperation(targetWidget, QPoint(targetWidget->width() / 2, targetWidget->height() / 2), false)) {
+        return;
+    }
     m_dragState = DragState::Dragging;
 }
 
@@ -885,15 +964,23 @@ void DragGridWidget::ensurePlaceholderVisible()
 
 void DragGridWidget::autoScroll()
 {
-    if (m_dragState != DragState::Dragging || !m_scrollArea || !m_scrollArea->viewport()) {
+    // 内容滚动会改变网格在屏幕上的位置，缓存的网格坐标换算出的"鼠标位置"会随
+    // 内容漂移；必须读取真实光标位置，鼠标静止在边缘时才能持续滚动。
+    if (m_dragState != DragState::Dragging || !m_scrollArea || !m_scrollArea->viewport()
+        || mouseGrabber() != this) {
         return;
     }
 
     const int margin = m_autoScrollMargin;
     const int maxSpeed = m_autoScrollMaxSpeed;
+    if (maxSpeed <= 0) {
+        // 速度为 0（或负值）时按"不自动滚动"处理，避免 edgeSpeed 的
+        // qBound 上界小于下界导致速度退化为常量 1。
+        return;
+    }
     const int marginSquared = qMax(1, margin * margin);
 
-    const QPoint mouseInViewport = m_scrollArea->viewport()->mapFromGlobal(mapToGlobal(m_lastMousePos));
+    const QPoint mouseInViewport = m_scrollArea->viewport()->mapFromGlobal(QCursor::pos());
 
     auto *vBar = m_scrollArea->verticalScrollBar();
     auto *hBar = m_scrollArea->horizontalScrollBar();
@@ -904,21 +991,23 @@ void DragGridWidget::autoScroll()
     const int viewportHeight = m_scrollArea->viewport()->height();
     const int viewportWidth = m_scrollArea->viewport()->width();
 
-    // 越靠近边缘滚动越快，平方曲线能减少刚进入边缘区域时的突兀跳动。
+    // 越靠近边缘滚动越快，平方曲线能减少刚进入边缘区域时的突兀跳动；
+    // 速度在 margin 处饱和于 maxSpeed，远离边缘不会无限加速，也避免乘法溢出。
+    const auto edgeSpeed = [maxSpeed, marginSquared](qint64 distance) -> int {
+        const qint64 speed = maxSpeed * distance * distance / marginSquared;
+        return int(qBound<qint64>(qint64(1), speed, qint64(maxSpeed)));
+    };
+
     if (mouseInViewport.y() < margin) {
-        const int distance = margin - mouseInViewport.y();
-        dy = -qMax(1, maxSpeed * distance * distance / marginSquared);
+        dy = -edgeSpeed(margin - mouseInViewport.y());
     } else if (mouseInViewport.y() > viewportHeight - margin) {
-        const int distance = mouseInViewport.y() - (viewportHeight - margin);
-        dy = qMax(1, maxSpeed * distance * distance / marginSquared);
+        dy = edgeSpeed(mouseInViewport.y() - (viewportHeight - margin));
     }
 
     if (mouseInViewport.x() < margin) {
-        const int distance = margin - mouseInViewport.x();
-        dx = -qMax(1, maxSpeed * distance * distance / marginSquared);
+        dx = -edgeSpeed(margin - mouseInViewport.x());
     } else if (mouseInViewport.x() > viewportWidth - margin) {
-        const int distance = mouseInViewport.x() - (viewportWidth - margin);
-        dx = qMax(1, maxSpeed * distance * distance / marginSquared);
+        dx = edgeSpeed(mouseInViewport.x() - (viewportWidth - margin));
     }
 
     if (dy != 0) {

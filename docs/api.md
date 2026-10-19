@@ -9,6 +9,8 @@ This document describes the public behavior of `YJDragGrid::DragGridWidget`.
 - `takeWidget()` removes and returns the widget at the requested index. The caller owns the widget afterwards.
 - `deleteWidget()` removes the widget and schedules it for deletion with `deleteLater()`.
 - `clear()` removes every managed widget and schedules each one for deletion.
+- If a managed widget is destroyed externally (without `removeWidget()` / `deleteWidget()`), the grid automatically removes it from the layout, cleans up, and refreshes the empty state immediately. Do not rely on this for normal removal; use the ownership API above.
+- Destroying the grid container while a drag is active is safe; drag UI state is reset during destruction and never touches already-destroyed internals.
 
 ## Ordering
 
@@ -25,6 +27,9 @@ This document describes the public behavior of `YJDragGrid::DragGridWidget`.
 - `ghostScale` values below `1.0` are treated as `1.0`.
 - Calling `setDragEnabled(false)` while dragging cancels the drag and restores the original order.
 - Calling `deleteWidget()` or `takeWidget()` for the dragged widget cancels the drag before removal.
+- Starting a drag never scrolls the viewport: if the dragged widget holds focus, focus is cleared before it is hidden, so Qt's focus-driven scroll-to-widget does not jump the content.
+- Edge auto-scroll runs only during mouse drags and tracks the real cursor position (`QCursor::pos()`), so it keeps scrolling while the mouse rests at the viewport edge; the step speed saturates at `autoScrollMaxSpeed`. Keyboard drags scroll the viewport through placeholder visibility (`ensurePlaceholderVisible`).
+- If the pressed widget is removed programmatically between press and drag start, the grid does not enter the dragging state; Esc and subsequent drags keep working.
 
 ## Layout
 

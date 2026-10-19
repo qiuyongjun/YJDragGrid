@@ -65,6 +65,10 @@ void DragGridLayout::insertWidget(int index, QWidget *widget, Qt::Alignment alig
 
     addChildWidget(widget);
     widget->installEventFilter(this);
+    // 外部直接销毁受管控件时自动摘除布局项，避免布局持有悬垂指针。
+    connect(widget, &QObject::destroyed, this, [this](QObject *obj) {
+        removeDestroyedWidget(qobject_cast<QWidget *>(obj));
+    });
     auto *item = new QWidgetItem(widget);
     m_items.insert(clampedInsertIndex(index), Item{item, alignment});
     invalidate();
@@ -87,8 +91,11 @@ QLayoutItem *DragGridLayout::takeAt(int index)
 
     Item item = m_items.takeAt(index);
     if (item.layoutItem && item.layoutItem->widget()) {
-        item.layoutItem->widget()->removeEventFilter(this);
-        stopAnimationForWidget(item.layoutItem->widget());
+        QWidget *widget = item.layoutItem->widget();
+        widget->removeEventFilter(this);
+        // 控件已脱离布局，断开 destroyed 回调，避免移除后的销毁触发无效清理。
+        disconnect(widget, &QObject::destroyed, this, nullptr);
+        stopAnimationForWidget(widget);
     }
     invalidate();
     return item.layoutItem;
@@ -552,6 +559,33 @@ void DragGridLayout::stopAnimationForWidget(QWidget *widget)
         animation->stop();
         delete animation.data();
     }
+}
+
+void DragGridLayout::removeDestroyedWidget(QWidget *widget)
+{
+    if (!widget) {
+        return;
+    }
+
+    // 此时控件处于析构中：只删除布局项、清理动画表项与忽略标记，
+    // 不得调用控件任何成员函数。
+    for (int index = 0; index < m_items.size(); ++index) {
+        const Item &item = m_items.at(index);
+        if (item.layoutItem && item.layoutItem->widget() == widget) {
+            delete item.layoutItem;
+            m_items.removeAt(index);
+            break;
+        }
+    }
+
+    // 几何动画以控件为父对象，会随控件一起销毁；这里只需清掉表项。
+    m_geometryAnimations.remove(widget);
+
+    if (m_ignoredWidget == widget) {
+        m_ignoredWidget = nullptr;
+    }
+
+    invalidate();
 }
 
 int DragGridLayout::targetIndexAt(const QPoint &pos) const

@@ -129,6 +129,8 @@ private:
 
     void setWidgetGeometryAnimated(QWidget *widget, const QRect &target);
     void stopAnimationForWidget(QWidget *widget);
+    // 控件被外部直接销毁时调用：摘除布局项并清理残留状态，不触碰控件本身。
+    void removeDestroyedWidget(QWidget *widget);
 
 private:
     QList<Item> m_items;

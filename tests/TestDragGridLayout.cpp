@@ -28,6 +28,7 @@ private slots:
     void ignoredWidget_isSkippedInLayoutGeometry();
     void placeholderIndex_withoutIgnoredWidgetDoesNotReserveSlot();
     void placeholderRect_usesStretchedIncompleteRow();
+    void externalDelete_removesItemAndKeepsLayoutUsable();
 };
 
 void TestDragGridLayout::clearLayout(DragGridLayout *layout)
@@ -337,6 +338,37 @@ void TestDragGridLayout::placeholderRect_usesStretchedIncompleteRow()
 
     layout->setIgnoredWidget(nullptr);
     layout->setPlaceholderIndex(-1);
+    clearLayout(layout);
+}
+
+void TestDragGridLayout::externalDelete_removesItemAndKeepsLayoutUsable()
+{
+    // 特征测试：外部直接 delete 受管控件时，布局须自动摘除布局项，
+    // 后续布局计算不得再解引用已销毁的控件。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(2);
+    layout->setMinimumCellSize(QSize(100, 100));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+    container.setGeometry(0, 0, 200, 100);
+
+    auto *w1 = createLayoutItem();
+    auto *w2 = createLayoutItem();
+    layout->addWidget(w1);
+    layout->addWidget(w2);
+    layout->activate();
+    QCOMPARE(layout->count(), 2);
+
+    delete w1; // 不经过 takeWidget()/takeAt() 的外部销毁
+
+    QCOMPARE(layout->count(), 1);
+    QCOMPARE(layout->indexOf(w2), 0);
+
+    layout->activate();
+    QCOMPARE(w2->geometry().topLeft(), QPoint(0, 0));
+
     clearLayout(layout);
 }
 

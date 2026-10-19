@@ -43,7 +43,7 @@ class YJDRAGGRID_EXPORT DragGridWidget : public QWidget
 public:
     // 创建拖拽网格容器；传入滚动区域后可启用拖拽边缘自动滚动。
     explicit DragGridWidget(QScrollArea *scrollArea = nullptr, QWidget *parent = nullptr);
-    ~DragGridWidget() override = default;
+    ~DragGridWidget() override;
 
     // 添加控件并纳入网格布局管理。
     void addWidget(QWidget *widget);
@@ -168,7 +168,10 @@ private:
 
     int indexOfWidget(const QWidget *widget) const;
     bool reorderForPlaceholder(int *from = nullptr, int *to = nullptr);
-    void startDragOperation(QWidget *widget, const QPoint &offset, bool grabMouse = true);
+    // 控件被外部直接销毁时的清理入口，不触碰垂死的控件对象。
+    void handleWidgetDestroyed(QObject *obj);
+    // 启动拖拽；控件不在网格中时返回 false 且不改变拖拽状态。
+    bool startDragOperation(QWidget *widget, const QPoint &offset, bool grabMouse = true);
     bool finishDrag();
     void cancelDrag();
     void cleanupDragUi();
@@ -200,7 +203,6 @@ private:
     QPoint m_pressOffset;
     QPoint m_dragPointOffset;
     QPoint m_dragGhostCursorOffset;
-    QPoint m_lastMousePos;
     int m_keyboardDragStartIndex = -1;
 
     QWidget *m_dragGhostWidget = nullptr;
@@ -221,6 +223,8 @@ private:
 
     QString m_emptyText = QStringLiteral("No items.");
     bool m_emptyStateVisible = true;
+    // 析构开始标记：子控件销毁顺序不可控，destroyed 处理器在析构期必须直接退出。
+    bool m_destructing = false;
 };
 
 } // namespace YJDragGrid

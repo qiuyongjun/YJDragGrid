@@ -3,6 +3,8 @@
 #include <QLayout>
 #include <QMetaProperty>
 #include <QMouseEvent>
+#include <QPropertyAnimation>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QScrollArea>
 #include <QWidget>
@@ -35,6 +37,13 @@ private slots:
     void mouseDrag_smallMoveKeepsGhostAnchored();
     void mouseDrag_releaseAtOriginalIndexRestoresGeometry();
     void mouseDrag_reordersWithStretchedLastRow();
+    void keyboardDrag_doesNotAutoScroll();
+    void keyboardDrag_startDoesNotScrollViewport();
+    void externalDelete_duringDrag_cleansUp();
+    void externalDelete_whenIdle_showsEmptyState();
+    void removeWidget_betweenPressAndMove_doesNotEnterDrag();
+    void destroyDuringDrag_doesNotCrash();
+    void placeholderOpacity_updatesPulseKeyframes();
 };
 
 namespace {
@@ -489,6 +498,261 @@ void TestDragGridWidget::mouseDrag_reordersWithStretchedLastRow()
                                                        QStringLiteral("first")}));
     QCOMPARE(orderSpy.count(), 1);
     QVERIFY(first->isVisible());
+}
+
+void TestDragGridWidget::keyboardDrag_doesNotAutoScroll()
+{
+    // 特征测试：键盘拖拽不得依据过期鼠标坐标触发边缘自动滚动。
+    // 修复前 m_lastMousePos 为零值，网格左上角贴近视口顶边时会持续向上滚动。
+    QScrollArea scrollArea;
+    auto *grid = new DragGridWidget(&scrollArea);
+    scrollArea.setWidget(grid);
+    // 布局最小高度（4 行 × 100）大于视口，保证出现垂直滚动条范围。
+    scrollArea.setWidgetResizable(true);
+    scrollArea.resize(300, 280);
+    scrollArea.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&scrollArea));
+
+    grid->setColumnCount(3);
+    grid->setMinimumCellSize(QSize(100, 100));
+    grid->setAnimationDuration(0);
+    grid->setDragEnabled(true);
+
+    for (int index = 0; index < 12; ++index) {
+        auto *item = createItem(QStringLiteral("item%1").arg(index));
+        grid->addWidget(item);
+    }
+    grid->layout()->activate();
+    QCoreApplication::processEvents();
+
+    auto *vBar = scrollArea.verticalScrollBar();
+
+    // 先处理焦点变化（QScrollArea 会自动滚到焦点控件），再设定滚动基准值。
+    auto *target = grid->widgets().first();
+    grid->activateWindow();
+    target->setFocus();
+    QCoreApplication::processEvents();
+
+    QVERIFY(vBar->maximum() > 0);
+    vBar->setValue(vBar->maximum() / 2);
+
+    QTest::keyClick(grid, Qt::Key_Space);
+    QCoreApplication::processEvents();
+    // 拾取会隐藏焦点控件，Qt 焦点转移可能引发一次性滚动；
+    // 以拾取完成后的值为基准，只隔离定时器驱动的边缘自动滚动。
+    const int valueAfterStart = vBar->value();
+
+    QTest::qWait(80); // 足够自动滚动定时器（16ms）运行若干拍
+    QCoreApplication::processEvents();
+
+    QCOMPARE(vBar->value(), valueAfterStart);
+
+    QTest::keyClick(grid, Qt::Key_Return);
+    QCoreApplication::processEvents();
+}
+
+void TestDragGridWidget::externalDelete_duringDrag_cleansUp()
+{
+    // 特征测试：外部直接 delete 拖拽中的控件时，网格须自动摘除并清理拖拽状态。
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    prepareGrid(&grid, first, second);
+    grid.setDragEnabled(true);
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+
+    auto sendMouse = [&grid](QEvent::Type type, const QPoint &pos,
+                             Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, pos, grid.mapToGlobal(pos), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(&grid, &event);
+    };
+
+    sendMouse(QEvent::MouseButtonPress, first->geometry().center(), Qt::LeftButton, Qt::LeftButton);
+    sendMouse(QEvent::MouseMove, second->geometry().center() + QPoint(60, 0), Qt::NoButton, Qt::LeftButton);
+    QCoreApplication::processEvents();
+    QVERIFY(grid.findChild<QLabel *>(QStringLiteral("GridDragGhost")));
+
+    delete first; // 外部直接销毁，不经过 deleteWidget()/removeWidget()
+    // cleanupDragUi() 通过 deleteLater() 清理镜像，需 flush 后才能断言。
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second")}));
+    QCOMPARE(orderSpy.count(), 0);
+    QVERIFY(!grid.findChild<QLabel *>(QStringLiteral("GridDragGhost")));
+
+    auto *placeholder = grid.findChild<QWidget *>(QStringLiteral("GridPlaceholder"));
+    QVERIFY(placeholder);
+    QVERIFY(!placeholder->isVisible());
+
+    // 清理后网格仍可继续拖拽，不得崩溃或残留悬垂状态。
+    grid.activateWindow();
+    second->setFocus();
+    QCoreApplication::processEvents();
+    QTest::keyClick(&grid, Qt::Key_Space);
+    QTest::keyClick(&grid, Qt::Key_Return);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second")}));
+    QVERIFY(second->isVisible());
+}
+
+void TestDragGridWidget::placeholderOpacity_updatesPulseKeyframes()
+{
+    // 特征测试：修改 placeholderOpacity 必须同步脉冲动画关键帧。
+    DragGridWidget grid;
+    auto *pulse = grid.findChild<QPropertyAnimation *>();
+    QVERIFY(pulse);
+    QCOMPARE(pulse->propertyName(), QByteArrayLiteral("opacity"));
+
+    grid.setPlaceholderOpacity(0.5);
+    QCOMPARE(pulse->keyValueAt(0.0).toDouble(), 0.3); // 0.5 * 0.6
+    QCOMPARE(pulse->keyValueAt(0.5).toDouble(), 0.7); // min(1.0, 0.5 * 1.4)
+    QCOMPARE(pulse->keyValueAt(1.0).toDouble(), 0.3);
+}
+
+void TestDragGridWidget::keyboardDrag_startDoesNotScrollViewport()
+{
+    // 特征测试：启动拖拽时隐藏获得焦点的卡片，不得因焦点转移引发视口跳转。
+    // Qt 6.9 起 QScrollArea 会滚动到焦点转移后的新控件；修复前滚动条从中间跳到 0。
+    QScrollArea scrollArea;
+    auto *grid = new DragGridWidget(&scrollArea);
+    scrollArea.setWidget(grid);
+    scrollArea.setWidgetResizable(false);
+    scrollArea.resize(300, 300);
+    scrollArea.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&scrollArea));
+
+    grid->setColumnCount(3);
+    grid->setMinimumCellSize(QSize(100, 100));
+    grid->setAnimationDuration(0);
+    grid->setDragEnabled(true);
+    for (int index = 0; index < 12; ++index) {
+        auto *item = createItem(QStringLiteral("item%1").arg(index));
+        grid->addWidget(item);
+    }
+    grid->layout()->activate();
+    // widgetResizable(false) 下滚动区域不主动撑高内容控件，显式给出高于视口的高度。
+    grid->resize(300, 600);
+    QCoreApplication::processEvents();
+
+    auto *vBar = scrollArea.verticalScrollBar();
+    QVERIFY(vBar->maximum() > 0);
+    vBar->setValue(vBar->maximum() / 2);
+    const int valueBefore = vBar->value();
+
+    auto *target = grid->widgets().first();
+    grid->activateWindow();
+    target->setFocus();
+    QCoreApplication::processEvents();
+
+    QTest::keyClick(grid, Qt::Key_Space);
+    QCoreApplication::processEvents();
+
+    QVERIFY(grid->findChild<QLabel *>(QStringLiteral("GridDragGhost")));
+    QCOMPARE(vBar->value(), valueBefore);
+
+    QTest::keyClick(grid, Qt::Key_Return);
+    QCoreApplication::processEvents();
+}
+
+void TestDragGridWidget::externalDelete_whenIdle_showsEmptyState()
+{
+    // 特征测试：非拖拽中的外部销毁必须立即刷新空状态，不能等到下一次交互。
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    prepareGrid(&grid, first, second);
+
+    auto *label = grid.findChild<QLabel *>(QStringLiteral("GridEmptyState"));
+    QVERIFY(label);
+    QVERIFY(!label->isVisible());
+
+    delete first; // 外部直接销毁，不经过 removeWidget()/deleteWidget()
+    QCOMPARE(grid.count(), 1);
+    QVERIFY(!label->isVisible());
+
+    delete second;
+    QCOMPARE(grid.count(), 0);
+    QVERIFY(label->isVisible());
+}
+
+void TestDragGridWidget::removeWidget_betweenPressAndMove_doesNotEnterDrag()
+{
+    // 特征测试：按下后、越过阈值前控件被程序移除（不销毁），不得进入拖拽状态；
+    // 修复前状态卡在 Dragging：Esc 无效，且后续移动会让无主的占位符可见。
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    auto *third = createItem(QStringLiteral("third"));
+    prepareGrid(&grid, first, second, third);
+    grid.setDragEnabled(true);
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+
+    auto sendMouse = [&grid](QEvent::Type type, const QPoint &pos,
+                             Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, pos, grid.mapToGlobal(pos), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(&grid, &event);
+    };
+
+    sendMouse(QEvent::MouseButtonPress, first->geometry().center(), Qt::LeftButton, Qt::LeftButton);
+    grid.removeWidget(first); // 程序移除按住的控件，所有权回到调用者
+    QCoreApplication::processEvents();
+
+    sendMouse(QEvent::MouseMove, second->geometry().center() + QPoint(80, 0),
+              Qt::NoButton, Qt::LeftButton);
+    QCoreApplication::processEvents();
+
+    QVERIFY(!grid.findChild<QLabel *>(QStringLiteral("GridDragGhost")));
+
+    QTest::keyClick(&grid, Qt::Key_Escape);
+    QCoreApplication::processEvents();
+    auto *placeholder = grid.findChild<QWidget *>(QStringLiteral("GridPlaceholder"));
+    QVERIFY(placeholder);
+    QVERIFY(!placeholder->isVisible());
+
+    // 状态机必须仍可正常拖拽其余控件
+    dragFromTo(&grid, second->geometry().center(), third->geometry().center() + QPoint(60, 0));
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("third"),
+                                                       QStringLiteral("second")}));
+    QCOMPARE(orderSpy.count(), 1);
+
+    delete first;
+}
+
+void TestDragGridWidget::destroyDuringDrag_doesNotCrash()
+{
+    // 特征测试：拖拽未结束时直接销毁容器，析构路径不得解引用已销毁的内部对象。
+    // 修复前 destroyed 回调在析构期触碰 m_gridLayout（堆状态决定是否段错误）。
+    QScrollArea scrollArea;
+    auto *grid = new DragGridWidget(&scrollArea);
+    scrollArea.setWidget(grid);
+    scrollArea.setWidgetResizable(false);
+    scrollArea.resize(300, 300);
+    scrollArea.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&scrollArea));
+
+    grid->setColumnCount(3);
+    grid->setMinimumCellSize(QSize(100, 100));
+    grid->setAnimationDuration(0);
+    grid->setDragEnabled(true);
+    for (int index = 0; index < 6; ++index) {
+        auto *item = createItem(QStringLiteral("item%1").arg(index));
+        grid->addWidget(item);
+    }
+    grid->layout()->activate();
+    QCoreApplication::processEvents();
+
+    auto *target = grid->widgets().first();
+    grid->activateWindow();
+    target->setFocus();
+    QCoreApplication::processEvents();
+
+    QTest::keyClick(grid, Qt::Key_Space);
+    QCoreApplication::processEvents();
+    QVERIFY(grid->findChild<QLabel *>(QStringLiteral("GridDragGhost")));
+
+    // 不调用 cancelDrag()/finishDrag()，直接离开作用域销毁容器。
 }
 
 QTEST_MAIN(TestDragGridWidget)
