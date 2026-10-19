@@ -24,12 +24,16 @@ private slots:
     void moveItem_reordersWidgets();
     void moveItem_invalidFrom_returnsFalse();
     void targetIndexAt_mapsPositionsReasonably();
+    void targetIndexAt_compensatesIgnoredSlotWhenDraggingRightward();
+    void targetIndexAt_allowsAppendAfterLastCell();
     void placeholderIndex_boundsAreRespected();
     void ignoredWidget_isSkippedInLayoutGeometry();
     void placeholderIndex_withoutIgnoredWidgetDoesNotReserveSlot();
     void placeholderRect_usesStretchedIncompleteRow();
     void externalDelete_removesItemAndKeepsLayoutUsable();
+    void addItem_managesWidgetLifecycle();
     void minimumCellSize_reflectsRuntimeWidgetMinimumSize();
+    void minimumSize_widthCoversOccupiedColumns();
 };
 
 void TestDragGridLayout::clearLayout(DragGridLayout *layout)
@@ -245,6 +249,83 @@ void TestDragGridLayout::targetIndexAt_mapsPositionsReasonably()
     clearLayout(layout);
 }
 
+void TestDragGridLayout::targetIndexAt_compensatesIgnoredSlotWhenDraggingRightward()
+{
+    // 特征测试：向右拖拽时被拖项的占位槽被保留，占位槽右侧项目已左移一格，
+    // 光标下的静态单元格索引与插入位错位 +1。
+    // 复现修复前故障：拖 w1 悬停 w2 单元格左半区快速释放，落点过冲成 [w2,w1,w3]。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(3);
+    layout->setMinimumCellSize(QSize(100, 100));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+    container.setGeometry(0, 0, 300, 100);
+    container.setMinimumSize(300, 100);
+
+    auto *w1 = new QWidget;
+    auto *w2 = new QWidget;
+    auto *w3 = new QWidget;
+    layout->addWidget(w1);
+    layout->addWidget(w2);
+    layout->addWidget(w3);
+    layout->activate();
+
+    // 向右拖：w1 被忽略，静态槽位 1/2 上的项目实际是 w2/w3。
+    layout->setIgnoredWidget(w1);
+    layout->activate();
+    // w2 左半区 → 插在 w2 之前 → 顺序不变
+    QCOMPARE(layout->targetIndexAt(QPoint(140, 50)), 0);
+    // w2 右半区 → 插在 w2 之后
+    QCOMPARE(layout->targetIndexAt(QPoint(160, 50)), 1);
+    // w3 左半区 → 插在 w3 之前
+    QCOMPARE(layout->targetIndexAt(QPoint(240, 50)), 1);
+    // w3 右半区与越界 → 追加
+    QCOMPARE(layout->targetIndexAt(QPoint(260, 50)), 2);
+    QCOMPARE(layout->targetIndexAt(QPoint(350, 50)), 2);
+
+    // 向左拖：被拖项右侧无保留槽，无需补偿。
+    layout->setIgnoredWidget(w3);
+    layout->activate();
+    // w1 左半区 → 插在 w1 之前
+    QCOMPARE(layout->targetIndexAt(QPoint(40, 50)), 0);
+    // w2 左半区 → 插在 w2 之前
+    QCOMPARE(layout->targetIndexAt(QPoint(140, 50)), 1);
+    // w2 右半区 → 追加（w3 是被拖项，插在 w2 之后即末尾）
+    QCOMPARE(layout->targetIndexAt(QPoint(160, 50)), 2);
+
+    layout->setIgnoredWidget(nullptr);
+    clearLayout(layout);
+}
+
+void TestDragGridLayout::targetIndexAt_allowsAppendAfterLastCell()
+{
+    // 特征测试：悬停最后一个单元格的右半区应表示"追加"，即使无拖拽进行。
+    // 复现修复前故障：返回值被 clamp 到 itemCount-1，末位右半区与左半区语义相同。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(2);
+    layout->setMinimumCellSize(QSize(100, 100));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+    container.setGeometry(0, 0, 200, 100);
+    container.setMinimumSize(200, 100);
+
+    auto *w1 = new QWidget;
+    auto *w2 = new QWidget;
+    layout->addWidget(w1);
+    layout->addWidget(w2);
+    layout->activate();
+
+    // 末位单元格左半区 → 插在 w2 之前；右半区 → 插在 w2 之后（追加）
+    QCOMPARE(layout->targetIndexAt(QPoint(40, 50)), 0);
+    QCOMPARE(layout->targetIndexAt(QPoint(160, 50)), 1);
+
+    clearLayout(layout);
+}
+
 void TestDragGridLayout::placeholderIndex_boundsAreRespected()
 {
     DragGridLayout layout;
@@ -373,6 +454,31 @@ void TestDragGridLayout::externalDelete_removesItemAndKeepsLayoutUsable()
     clearLayout(layout);
 }
 
+void TestDragGridLayout::addItem_managesWidgetLifecycle()
+{
+    // 特征测试：经基类 QLayout::addWidget()（非虚函数，走 addItem）加入的
+    // 控件必须与 insertWidget 路径一样受生命周期管理。
+    // 复现修复前故障：外部销毁后布局项残留，count() 虚高、indexOf 命中悬垂项。
+    DragGridLayout layout;
+    auto *managed = new QWidget;
+    layout.addWidget(managed); // 本类 addWidget → insertWidget，已受管
+
+    auto *viaBase = new QWidget;
+    static_cast<QLayout *>(&layout)->addWidget(viaBase); // 非虚调用 → addItem
+    QCOMPARE(layout.count(), 2);
+    QCOMPARE(layout.indexOf(viaBase), 1);
+    QCOMPARE(layout.widgets().size(), 2);
+
+    delete viaBase; // 不经过 takeWidget()/takeAt() 的外部销毁
+
+    QCOMPARE(layout.count(), 1);
+    QCOMPARE(layout.indexOf(viaBase), -1);
+    QCOMPARE(layout.widgets().size(), 1);
+    QCOMPARE(layout.indexOf(managed), 0);
+
+    clearLayout(&layout);
+}
+
 void TestDragGridLayout::minimumCellSize_reflectsRuntimeWidgetMinimumSize()
 {
     // 特征测试：运行期修改卡片 minimumSize 后，布局必须重新计算最小单元格。
@@ -401,6 +507,42 @@ void TestDragGridLayout::minimumCellSize_reflectsRuntimeWidgetMinimumSize()
     QCOMPARE(layout->minimumSize(), QSize(250, 250));
     QVERIFY(card->width() >= 250);
     QVERIFY(card->height() >= 250);
+
+    clearLayout(layout);
+}
+
+void TestDragGridLayout::minimumSize_widthCoversOccupiedColumns()
+{
+    // 特征测试：最小宽度口径 min(列数, 项数) 等于项目实际占用的列数，
+    // 最小宽度下所有槽位完整可见，与高度口径 ceil(项数/列数) 自洽。
+    // 顺带钉住"允许压缩"语义：稀疏网格可以收缩到实际占用列数，
+    // 均匀与拉伸（不完整行填满）两种模式都不得横向溢出。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(4);
+    layout->setMinimumCellSize(QSize(100, 100));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+
+    auto *w1 = createLayoutItem();
+    auto *w2 = createLayoutItem();
+    layout->addWidget(w1);
+    layout->addWidget(w2);
+
+    QCOMPARE(layout->minimumSize().width(), 200); // min(4, 2) 列
+
+    container.resize(200, 100); // 压到最小宽度
+    layout->activate();
+    // 两项分别占槽位 0/1，都必须完整落在 200 宽内（无横向溢出）。
+    QCOMPARE(w1->geometry(), QRect(0, 0, 100, 100));
+    QCOMPARE(w2->geometry(), QRect(100, 0, 100, 100));
+
+    // 拉伸模式同样不允许溢出：宽度不足时回退均匀单元格。
+    layout->setFillIncompleteRowEnabled(true);
+    layout->activate();
+    QCOMPARE(w1->geometry(), QRect(0, 0, 100, 100));
+    QCOMPARE(w2->geometry(), QRect(100, 0, 100, 100));
 
     clearLayout(layout);
 }

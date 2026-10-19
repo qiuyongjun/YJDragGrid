@@ -100,7 +100,8 @@ public:
     // 返回指定视觉索引对应的单元格矩形。
     QRect cellRectForIndex(int index, const QRect &contentsRect) const;
 
-    // 根据鼠标位置计算目标占位索引（已考虑前后半区、首/尾/空白区域）。
+    // 根据鼠标位置计算目标插入索引（已考虑前后半区、首/尾/空白区域；
+    // 拖拽中会对被保留的占位槽做补偿，返回值可直接用作 moveItem 的目标索引）。
     int targetIndexAt(const QPoint &pos) const;
     // 返回指定占位索引在当前布局中的几何矩形。
     QRect placeholderRectAt(int placeholderIndex) const;

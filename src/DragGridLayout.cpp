@@ -42,6 +42,20 @@ void DragGridLayout::addItem(QLayoutItem *item)
         return;
     }
 
+    // 通过基类 QLayout::addWidget()（非虚函数）或手工 addItem() 加入的控件
+    // 只会经过这里：必须补齐与 insertWidget 相同的生命周期管理，否则外部
+    // 销毁后布局项残留、count() 虚高、m_ignoredWidget 比对失效。
+    // spacer 等非控件项不在此列，仍按裸布局项对待。
+    if (QWidget *widget = item->widget()) {
+        if (indexOf(widget) == -1) {
+            widget->installEventFilter(this);
+            // 外部直接销毁受管控件时自动摘除布局项，避免布局持有悬垂指针。
+            connect(widget, &QObject::destroyed, this, [this](QObject *obj) {
+                removeDestroyedWidget(qobject_cast<QWidget *>(obj));
+            });
+        }
+    }
+
     m_items.append(Item{item, {}});
     invalidate();
 }
@@ -635,15 +649,27 @@ int DragGridLayout::targetIndexAt(const QPoint &pos) const
     const int rows = qMax(1, (itemCount + columns - 1) / columns);
     const int row = qBound(0, (pos.y() - contentRect.top()) / stepHeight, rows - 1);
 
-    return targetIndexInRow(pos, row, contentRect, columns, cellSize, itemCount);
+    const int slotIndex = targetIndexInRow(pos, row, contentRect, columns, cellSize, itemCount);
+
+    // 拖拽中被拖项的占位槽被保留：占位槽右侧的项目已向左挪一格，光标命中的
+    // 静态单元格序号比"排除被拖项后的插入位"大 1。不补偿时，快速拖拽
+    // （一两个 move 事件即释放）的落点会向右过冲一位，且方向不对称。
+    // 键盘拖拽直接写 placeholderIndex，不经此路径，不受补偿影响。
+    const int draggedIndex = m_ignoredWidget ? indexOf(m_ignoredWidget) : -1;
+    const int insertionIndex = draggedIndex >= 0 && draggedIndex < slotIndex
+            ? slotIndex - 1
+            : slotIndex;
+    return qBound(0, insertionIndex, m_items.size() - 1);
 }
 
 int DragGridLayout::targetIndexInRow(const QPoint &pos, int row, const QRect &contentRect,
                                      int columns, const QSize &cellSize, int itemCount) const
 {
+    // 返回静态槽位序号，允许等于 itemCount 表示"追加到末尾"；
+    // 越界 clamp 由 targetIndexAt 的补偿逻辑统一处理。
     const int rowStart = row * columns;
     if (rowStart >= itemCount) {
-        return itemCount - 1;
+        return itemCount;
     }
 
     const int rowEnd = qMin(itemCount - 1, rowStart + columns - 1);
@@ -659,16 +685,16 @@ int DragGridLayout::targetIndexInRow(const QPoint &pos, int row, const QRect &co
         if (pos.x() <= cell.right()) {
             if (columns == 1) {
                 return (pos.y() - cell.top()) * 2 >= cell.height()
-                        ? qMin(index + 1, itemCount - 1)
+                        ? index + 1
                         : index;
             }
             return (pos.x() - cell.left()) * 2 >= cell.width()
-                    ? qMin(index + 1, itemCount - 1)
+                    ? index + 1
                     : index;
         }
     }
 
-    return qMin(rowEnd + 1, itemCount - 1);
+    return rowEnd + 1;
 }
 
 QRect DragGridLayout::placeholderRectAt(int placeholderIndex) const

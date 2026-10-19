@@ -162,9 +162,12 @@ void DragGridWidget::handleWidgetDestroyed(QObject *obj)
     if (obj != static_cast<QObject *>(m_draggedWidget)
         && obj != static_cast<QObject *>(m_pressWidget)) {
         // 拖拽/按压目标之外的其他受管控件被外部销毁：布局侧已摘除布局项，
-        // 这里补齐空状态与几何刷新即可，不终止进行中的拖拽。
+        // 这里补齐空状态、几何与占位符刷新即可，不终止进行中的拖拽。
+        // 占位符几何不刷新会一直画在删除前的旧矩形，直到下一次鼠标移动。
         updateEmptyState();
         updateGeometry();
+        m_gridLayout->activate();
+        updatePlaceholder();
         return;
     }
 
@@ -431,7 +434,13 @@ void DragGridWidget::setPlaceholderPulseDuration(int ms)
 {
     m_placeholderPulseDuration = qMax(0, ms);
     if (m_placeholderPulseAnimation) {
-        m_placeholderPulseAnimation->setDuration(m_placeholderPulseDuration);
+        // 拖拽进行中把时长改成 0 同样会触发忙转，运行中的动画直接停掉。
+        if (m_placeholderPulseDuration <= 0
+            && m_placeholderPulseAnimation->state() == QAbstractAnimation::Running) {
+            m_placeholderPulseAnimation->stop();
+        } else {
+            m_placeholderPulseAnimation->setDuration(m_placeholderPulseDuration);
+        }
     }
 }
 
@@ -790,7 +799,9 @@ bool DragGridWidget::startDragOperation(QWidget *widget, const QPoint &offset, b
     m_gridLayout->activate();
     updatePlaceholder();
 
-    if (m_placeholderPulseAnimation) {
+    // duration=0 的无限循环动画会立即完成并无限重启，占满事件循环 tick；
+    // 0 时长表示"不要脉冲"，直接跳过启动。
+    if (m_placeholderPulseAnimation && m_placeholderPulseDuration > 0) {
         m_placeholderPulseAnimation->start();
     }
 

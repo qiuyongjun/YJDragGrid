@@ -35,6 +35,7 @@ private slots:
     void emptyText_defaultAndCustom();
     void emptyStateVisible_togglesVisibility();
     void mouseDrag_reordersWidgets();
+    void mouseDrag_fastReleaseLeftHalfKeepsOrder();
     void keyboardDrag_emitsDetailedSignals();
     void keyboardDrag_reordersWidgets();
     void escapeDuringDrag_restoresOriginalOrder();
@@ -51,6 +52,7 @@ private slots:
     void removeWidget_betweenPressAndMove_doesNotEnterDrag();
     void destroyDuringDrag_doesNotCrash();
     void placeholderOpacity_updatesPulseKeyframes();
+    void zeroPlaceholderPulseDuration_skipsPulseAnimation();
     void mouseDrag_ghostSizeHonorsScale();
     void mouseDrag_reorderUsesSingleGeometryAnimation();
     void spaceOnCardButton_startsDragInsteadOfClick();
@@ -262,6 +264,32 @@ void TestDragGridWidget::mouseDrag_reordersWidgets()
                                                        QStringLiteral("third"),
                                                        QStringLiteral("first")}));
     QCOMPARE(orderSpy.count(), 1);
+    QVERIFY(first->isVisible());
+}
+
+void TestDragGridWidget::mouseDrag_fastReleaseLeftHalfKeepsOrder()
+{
+    // 特征测试：向右快速拖拽（一两个 move 事件即释放）时，落点须按静态
+    // 单元格计算并对被保留的占位槽做补偿。悬停某单元格左半区表示
+    // "插在该项目之前"——目标顺序不变时不得重排。
+    // 复现修复前故障：拖 first 到 second 单元格左半区释放，结果过冲成
+    // [second, first, third]，且向左拖正确、向右拖偏后一位，方向不对称。
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    auto *third = createItem(QStringLiteral("third"));
+    prepareGrid(&grid, first, second, third);
+    grid.setDragEnabled(true);
+    QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
+
+    const QRect secondCell = second->geometry();
+    const QPoint target(secondCell.left() + secondCell.width() / 4, secondCell.center().y());
+    dragFromTo(&grid, first->geometry().center(), target);
+
+    QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("first"),
+                                                       QStringLiteral("second"),
+                                                       QStringLiteral("third")}));
+    QCOMPARE(orderSpy.count(), 0);
     QVERIFY(first->isVisible());
 }
 
@@ -508,7 +536,12 @@ void TestDragGridWidget::mouseDrag_reordersWithStretchedLastRow()
     grid.setDragEnabled(true);
     QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
 
-    dragFromTo(&grid, first->geometry().center(), sixth->geometry().center());
+    // 落点取第六项单元格右半区（center + width/4），明确表达"插到 sixth 之后"。
+    // 修复落点补偿前用 center 也能通过：奇数宽度的拉伸单元格中点恰好落在
+    // 左半区（(width/2)*2 < width），旧实现靠末位 clamp 碰巧判成追加。
+    const QRect sixthCell = sixth->geometry();
+    dragFromTo(&grid, first->geometry().center(),
+               sixthCell.center() + QPoint(sixthCell.width() / 4, 0));
 
     QCOMPARE(objectNames(grid.widgets()), QStringList({QStringLiteral("second"),
                                                        QStringLiteral("third"),
@@ -629,6 +662,57 @@ void TestDragGridWidget::placeholderOpacity_updatesPulseKeyframes()
     QCOMPARE(pulse->keyValueAt(0.0).toDouble(), 0.3); // 0.5 * 0.6
     QCOMPARE(pulse->keyValueAt(0.5).toDouble(), 0.7); // min(1.0, 0.5 * 1.4)
     QCOMPARE(pulse->keyValueAt(1.0).toDouble(), 0.3);
+}
+
+void TestDragGridWidget::zeroPlaceholderPulseDuration_skipsPulseAnimation()
+{
+    // 特征测试：duration=0 配合 loopCount=-1 的 QPropertyAnimation 会立即
+    // 完成并无限重启，占满事件循环 tick。0 时长表示"不要脉冲"：
+    // 拖拽启动时跳过，拖拽中改 0 时立即停止。
+    DragGridWidget grid;
+    auto *first = createItem(QStringLiteral("first"));
+    auto *second = createItem(QStringLiteral("second"));
+    prepareGrid(&grid, first, second);
+    grid.setDragEnabled(true);
+    grid.setPlaceholderPulseDuration(0);
+
+    auto pulseRunning = [&grid]() {
+        for (QPropertyAnimation *animation : grid.findChildren<QPropertyAnimation *>()) {
+            if (animation->propertyName() == QByteArrayLiteral("opacity")
+                && animation->state() == QAbstractAnimation::Running) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    auto startDrag = [&grid, first]() {
+        const QPoint from = first->geometry().center();
+        QMouseEvent press(QEvent::MouseButtonPress, from, grid.mapToGlobal(from),
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&grid, &press);
+        QMouseEvent move(QEvent::MouseMove, from + QPoint(30, 0),
+                         grid.mapToGlobal(from + QPoint(30, 0)),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&grid, &move);
+        QCoreApplication::processEvents();
+    };
+
+    startDrag();
+    QVERIFY(!pulseRunning());
+
+    // 反向验证：改回非 0 时长后脉冲确实会启动，避免上面断言空过。
+    grid.setDragEnabled(false);
+    grid.setPlaceholderPulseDuration(150);
+    grid.setDragEnabled(true);
+    startDrag();
+    QVERIFY(pulseRunning());
+
+    // 拖拽进行中把时长改成 0 也必须立即停止。
+    grid.setPlaceholderPulseDuration(0);
+    QVERIFY(!pulseRunning());
+
+    grid.setDragEnabled(false);
 }
 
 void TestDragGridWidget::keyboardDrag_startDoesNotScrollViewport()
@@ -1000,6 +1084,14 @@ void TestDragGridWidget::externalDelete_otherCardDuringDrag_keepsPlaceholderInRa
     QCoreApplication::processEvents();
 
     QVERIFY(layout->placeholderIndex() <= grid.widgets().size() - 1);
+
+    // 特征断言：删除后占位符几何必须立即跟随布局重排。
+    // 修复前占位符仍画在删除前的旧矩形，直到下一次鼠标移动才纠正。
+    auto *placeholder = grid.findChild<QWidget *>(QStringLiteral("GridPlaceholder"));
+    QVERIFY(placeholder);
+    QVERIFY(placeholder->isVisible());
+    QCOMPARE(placeholder->geometry(),
+             layout->placeholderRectAt(layout->placeholderIndex()));
 
     sendMouse(QEvent::MouseMove, second->geometry().center(), Qt::NoButton, Qt::LeftButton);
     QCoreApplication::processEvents();

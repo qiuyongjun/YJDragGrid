@@ -35,6 +35,10 @@
 - `takeWidget()` / `removeWidget()` 在布局含非 widget 项时按控件重新换算布局索引，不再摘错对象或返回空。
 - 拖拽期间删除其他卡片后，占位索引会收回有效槽位，不再出现卡片挤进同一格。
 - 键盘拾取不再抢占卡片内输入框、下拉框、滑块与滚动区域的 `Space`，空格输入保持可用。
+- 修复快速拖拽（一两个 move 事件即释放）时落点向右过冲一位的问题：`targetIndexAt()` 现在对被保留的占位槽做补偿，返回值直接可用作 `moveItem()` 的目标索引，向左拖与向右拖的半区语义对称。悬停被拖项自身单元格不再触发重排。
+- 经基类 `QLayout::addWidget()`（非虚函数）或手工 `addItem()` 加入的控件现在与 `insertWidget()` 路径一样受生命周期管理：外部销毁后布局项自动摘除，`count()` 不再虚高。
+- 拖拽期间删除其他卡片后，占位符几何立即跟随布局重排刷新，不再停留在删除前的旧矩形等待下一次鼠标移动。
+- `setPlaceholderPulseDuration(0)` 不再启动（或拖拽中改 0 时立即停止）无限循环的脉冲动画，消除 `duration=0` + `loopCount=-1` 占满事件循环 tick 的忙转风险。
 
 ### Changed
 
@@ -44,6 +48,7 @@
 - `DragGridLayout` 补齐 `Q_OBJECT`，`qobject_cast` 可以识别该类型。
 - 构造 `DragGridWidget` 时注册 `QList<QWidget *>` 元类型，`orderUpdated` 可直接用于队列连接。
 - Windows CI 测试改用 offscreen 平台，与 Unix 保持一致。
+- CI 在 Unix 上构建安装产物 consumer 后实际运行它：其返回码承载断言（`columnCount == 2`），此前只构建从未执行。
 
 ## [0.3.0] - 2026-07-01
 

@@ -61,6 +61,14 @@ jobs:
         if: runner.os != 'Windows'
         run: cmake --build build/consumer --config Release
 
+      # consumer 的返回码承载断言（columnCount == 2），只构建不运行
+      # 等于从未验证过安装产物可用。
+      - name: Run installed consumer (Unix)
+        if: runner.os != 'Windows'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build/consumer/YJDragGridConsumer
+
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         run: cmake -S . -B build -DYJDRAGGRID_BUILD_DEMO=OFF
