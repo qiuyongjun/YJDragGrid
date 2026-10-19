@@ -103,7 +103,7 @@ See [docs/api.md](docs/api.md) for the public behavior contract.
 - `void itemMoved(int from, int to)` — Signal emitted with the moved item's original and final index.
 - `void orderUpdated(const QList<QWidget *> &widgets)` — Signal emitted with the complete order after a user reorder.
 - `int dragThreshold() / void setDragThreshold(int)` — Pixel distance before a press becomes a drag.
-- `qreal ghostScale() / void setGhostScale(qreal)` — Scale factor of the drag ghost (default 1.05).
+- `qreal ghostScale() / void setGhostScale(qreal)` — Scale factor of the drag ghost (default 1.05, clamped to 1.0–3.0).
 - `int animationDuration() / void setAnimationDuration(int)` — Layout transition duration in milliseconds (default 200).
 - `int scrollTimerInterval() / void setScrollTimerInterval(int)` — Auto-scroll timer interval in milliseconds (default 16).
 - `QWidget *dragHandle() / void setDragHandle(QWidget *)` — Optional handle widget; only presses inside the handle start a drag.
@@ -123,7 +123,23 @@ When a child widget has focus and `setDragEnabled(true)` is active:
 - `Enter` — Drop the card at the placeholder position.
 - `Escape` — Cancel the drag and restore the original order, returning focus to the dragged card.
 
-> **Note:** Calling `setDragEnabled(false)` while a drag is in progress forces the dragged card to be dropped at the current placeholder position.
+> **Note:** With dragging enabled, `Space` takes priority over activation of focusable controls inside a card; otherwise a focused button would consume `Space` and keyboard pickup would never work. Text inputs, combo boxes, sliders and scroll areas inside a card keep their normal `Space` behavior, so typing spaces still works. Arrow keys, `Enter` and `Escape` are only intercepted while a drag is active. With `dragEnabled = false` the grid intercepts nothing.
+
+> **Note:** Calling `setDragEnabled(false)` while a drag is in progress cancels the drag and restores the original order; it does not drop the card at the current placeholder.
+
+### Appearance
+
+The placeholder ships with a default look (translucent highlight fill plus a panel frame), so drag feedback is visible without a stylesheet. Any `#GridPlaceholder` rule overrides it completely:
+
+```css
+#GridPlaceholder {
+    background-color: rgba(74, 144, 226, 0.15);
+    border: 2px dashed #4a90e2;
+    border-radius: 12px;
+}
+```
+
+The empty-state label uses object name `GridEmptyState`; the drag ghost uses `GridDragGhost`.
 
 ### Drag Handle
 

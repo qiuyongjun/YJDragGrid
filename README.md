@@ -103,7 +103,7 @@ grid->addWidget(new MyCardWidget());
 - `void itemMoved(int from, int to)` — 用户拖拽改变顺序后发出移动前后的索引。
 - `void orderUpdated(const QList<QWidget *> &widgets)` — 用户拖拽改变顺序后发出完整顺序。
 - `int dragThreshold() / void setDragThreshold(int)` — 触发拖拽的按压移动阈值（像素，默认 6）。
-- `qreal ghostScale() / void setGhostScale(qreal)` — 拖拽镜像缩放比例（默认 1.05）。
+- `qreal ghostScale() / void setGhostScale(qreal)` — 拖拽镜像缩放比例（默认 1.05，取值 1.0–3.0）。
 - `int animationDuration() / void setAnimationDuration(int)` — 布局过渡动画时长，单位毫秒（默认 200）。
 - `int scrollTimerInterval() / void setScrollTimerInterval(int)` — 自动滚动定时器间隔，单位毫秒（默认 16）。
 - `QWidget *dragHandle() / void setDragHandle(QWidget *)` — 可选拖拽手柄；仅在手柄区域内按下才启动拖拽。
@@ -123,7 +123,23 @@ grid->addWidget(new MyCardWidget());
 - `Enter` — 将卡片放到占位符位置。
 - `Escape` — 取消拖拽并恢复原始顺序，焦点回到被拖拽卡片。
 
-> **注意：** 拖拽过程中调用 `setDragEnabled(false)` 会强制将卡片落到当前占位符位置。
+> **注意：** 启用拖拽后，`Space` 的优先级高于卡片内按钮的激活动作，否则焦点停在卡片内的按钮上时无法用键盘拾取卡片。卡片内的输入框、下拉框、滑块与滚动区域不受影响，空格照常输入。禁用拖拽（`dragEnabled = false`）后按键行为完全交还原控件。方向键、`Enter`、`Escape` 只在拖拽进行中才由网格接管。
+
+> **注意：** 拖拽过程中调用 `setDragEnabled(false)` 会取消拖拽并恢复原始顺序，不会落位到当前占位符。
+
+### 外观定制
+
+占位符自带默认外观（浅色填充 + 面板边框），无需额外样式即可看见落点。如需自定义，按 object name 覆盖即可：
+
+```css
+#GridPlaceholder {
+    background-color: rgba(74, 144, 226, 0.15);
+    border: 2px dashed #4a90e2;
+    border-radius: 12px;
+}
+```
+
+空状态提示的 object name 为 `GridEmptyState`，拖拽镜像为 `GridDragGhost`。
 
 ### 拖拽手柄
 
