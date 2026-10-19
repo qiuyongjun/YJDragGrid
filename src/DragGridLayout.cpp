@@ -24,18 +24,12 @@ DragGridLayout::~DragGridLayout()
     }
 }
 
-void DragGridLayout::invalidate()
-{
-    m_minCellSizeDirty = true;
-    QLayout::invalidate();
-}
-
 bool DragGridLayout::eventFilter(QObject *watched, QEvent *event)
 {
     if (event->type() == QEvent::LayoutRequest) {
         auto *widget = qobject_cast<QWidget *>(watched);
         if (widget && indexOf(widget) >= 0) {
-            // 子控件最小尺寸可能变化，必须让缓存失效后再参与下一次布局计算。
+            // 子控件内部布局变化后，其 minimumSize 可能已改变。
             invalidate();
         }
     }
@@ -90,6 +84,9 @@ QLayoutItem *DragGridLayout::takeAt(int index)
     }
 
     Item item = m_items.takeAt(index);
+    const bool removedIgnoredWidget = m_ignoredWidget && item.layoutItem
+            && item.layoutItem->widget() == m_ignoredWidget;
+
     if (item.layoutItem && item.layoutItem->widget()) {
         QWidget *widget = item.layoutItem->widget();
         widget->removeEventFilter(this);
@@ -97,6 +94,15 @@ QLayoutItem *DragGridLayout::takeAt(int index)
         disconnect(widget, &QObject::destroyed, this, nullptr);
         stopAnimationForWidget(widget);
     }
+
+    // 占位符索引是视觉槽位，项目减少后可能越界；被忽略项被移除时占位含义也消失。
+    if (removedIgnoredWidget) {
+        m_ignoredWidget = nullptr;
+        m_placeholderIndex = -1;
+    } else if (m_placeholderIndex >= m_items.size()) {
+        m_placeholderIndex = m_items.isEmpty() ? -1 : m_items.size() - 1;
+    }
+
     invalidate();
     return item.layoutItem;
 }
@@ -416,20 +422,15 @@ QSize DragGridLayout::effectiveCellSize(const QRect &contentRect) const
 
 QSize DragGridLayout::minimumCellSizeForItems() const
 {
-    if (!m_minCellSizeDirty) {
-        return m_cachedMinCellSize;
-    }
-
     // 最小单元格尺寸需要同时满足配置值和所有子控件的 minimumSize。
+    // 不缓存：子控件可在运行期改最小尺寸，而 LayoutRequest 只发给父控件，
+    // 布局无法可靠收到通知，缓存一旦过期会让卡片被压到低于自身最小尺寸。
     QSize cellSize = m_minimumCellSize;
     for (const Item &item : m_items) {
         if (item.layoutItem) {
             cellSize = cellSize.expandedTo(item.layoutItem->minimumSize());
         }
     }
-
-    m_cachedMinCellSize = cellSize;
-    m_minCellSizeDirty = false;
     return cellSize;
 }
 
@@ -458,7 +459,9 @@ int DragGridLayout::rowCount() const
 
 bool DragGridLayout::hasActivePlaceholder() const
 {
-    return m_ignoredWidget && m_placeholderIndex >= 0;
+    // 忽略项必须仍在布局中，且索引落在有效槽位内，否则预留槽会与真实项目错位。
+    return m_ignoredWidget && indexOf(m_ignoredWidget) >= 0
+            && m_placeholderIndex >= 0 && m_placeholderIndex < m_items.size();
 }
 
 int DragGridLayout::visualItemCount() const
@@ -582,7 +585,12 @@ void DragGridLayout::removeDestroyedWidget(QWidget *widget)
     m_geometryAnimations.remove(widget);
 
     if (m_ignoredWidget == widget) {
+        // 被忽略项即占位槽的"洞"，控件没了占位含义也随之消失。
         m_ignoredWidget = nullptr;
+        m_placeholderIndex = -1;
+    } else if (m_placeholderIndex >= m_items.size()) {
+        // 其他控件被销毁时项目数减少，占位索引必须收回到有效槽位。
+        m_placeholderIndex = m_items.isEmpty() ? -1 : m_items.size() - 1;
     }
 
     invalidate();

@@ -89,4 +89,6 @@ jobs:
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build --output-on-failure -C Release

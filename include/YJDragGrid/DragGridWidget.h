@@ -84,12 +84,13 @@ public:
 
     // 返回拖拽镜像缩放比例。
     qreal ghostScale() const;
-    // 设置拖拽镜像缩放比例，最小为 1.0。
+    // 设置拖拽镜像缩放比例，取值范围 1.0 到 3.0。
     void setGhostScale(qreal scale);
 
     // 返回当前拖拽手柄控件。
     QWidget *dragHandle() const;
     // 设置拖拽手柄；仅手柄自身或其子控件可启动拖拽。
+    // 手柄必须位于某个已加入网格的卡片子树内，否则拖拽永远不会启动。
     void setDragHandle(QWidget *handle);
 
     // 返回自动滚动定时器间隔。
@@ -159,6 +160,8 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    // 拦截受管控件内部的按键，避免 Space 被卡片内按钮抢走。
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
     void slot_scrollTimer_timeOut();
@@ -168,6 +171,13 @@ private:
 
     int indexOfWidget(const QWidget *widget) const;
     bool reorderForPlaceholder(int *from = nullptr, int *to = nullptr);
+    // 从网格摘除控件：卸载事件过滤器、断开 destroyed 回调、隐藏并清除父子关系。
+    void detachWidget(QWidget *widget);
+    // 在受管控件及其后代上安装/卸载拖拽按键过滤器。
+    void installDragKeyFilters(QWidget *root);
+    void removeDragKeyFilters(QWidget *root);
+    // 同步拖拽镜像与占位符到指定光标位置（容器本地坐标）。
+    void updateDragFeedback(const QPoint &cursorPos);
     // 控件被外部直接销毁时的清理入口，不触碰垂死的控件对象。
     void handleWidgetDestroyed(QObject *obj);
     // 启动拖拽；控件不在网格中时返回 false 且不改变拖拽状态。

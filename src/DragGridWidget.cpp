@@ -3,11 +3,16 @@
 #include <YJDragGrid/DragGridLayout.h>
 
 #include <QCursor>
+#include <QAbstractScrollArea>
+#include <QAbstractSlider>
 #include <QApplication>
+#include <QComboBox>
+#include <QFrame>
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLayoutItem>
 #include <QMargins>
 #include <QMouseEvent>
 #include <QPainter>
@@ -20,19 +25,65 @@
 
 namespace YJDragGrid {
 
+namespace {
+
+// 文本输入、下拉、滑块与滚动区域对 Space 有独立语义，拖拽拾取不能抢占，
+// 否则卡片内的输入框将无法输入空格。
+bool spaceBelongsToFocusWidget(const QObject *watched)
+{
+    const auto *widget = qobject_cast<const QWidget *>(watched);
+    if (!widget) {
+        return true;
+    }
+
+    return widget->testAttribute(Qt::WA_InputMethodEnabled)
+            || qobject_cast<const QComboBox *>(widget) != nullptr
+            || qobject_cast<const QAbstractSlider *>(widget) != nullptr
+            || qobject_cast<const QAbstractScrollArea *>(widget) != nullptr;
+}
+
+// 判断控件是否属于另一个（嵌套的）拖拽网格。嵌套网格自行管理按键，
+// 外层不得把过滤器装到它的子树上，否则会抢走内层的 Space 拾取。
+bool belongsToNestedGrid(const QWidget *widget, const DragGridWidget *owner)
+{
+    for (const QWidget *current = widget; current; current = current->parentWidget()) {
+        if (const auto *grid = qobject_cast<const DragGridWidget *>(current)) {
+            return grid != owner;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
 DragGridWidget::DragGridWidget(QScrollArea *scrollArea, QWidget *parent)
     : QWidget(parent)
     , m_scrollArea(scrollArea)
 {
+    // orderUpdated 携带 QList<QWidget *>，队列连接与跨线程调用前需要注册。
+    qRegisterMetaType<QList<QWidget *>>("QList<QWidget *>");
+
     setFocusPolicy(Qt::StrongFocus);
 
     m_gridLayout = new DragGridLayout(this);
     m_gridLayout->setAnimationDuration(m_animationDuration);
     setLayout(m_gridLayout);
 
-    m_placeholderWidget = new QWidget(this);
-    m_placeholderWidget->setObjectName("GridPlaceholder");
-    m_placeholderWidget->setVisible(false);
+    // 用 QFrame 承载占位符：它自带 frame 绘制路径，未提供 QSS 时也能看见落点；
+    // 调用方仍可通过 #GridPlaceholder 样式表完全覆盖默认外观。
+    auto *placeholder = new QFrame(this);
+    placeholder->setObjectName("GridPlaceholder");
+    placeholder->setFrameShape(QFrame::StyledPanel);
+    placeholder->setLineWidth(2);
+    placeholder->setAttribute(Qt::WA_StyledBackground, true);
+    QPalette placeholderPalette = placeholder->palette();
+    QColor placeholderFill = placeholderPalette.color(QPalette::Highlight);
+    placeholderFill.setAlpha(48);
+    placeholderPalette.setColor(QPalette::Window, placeholderFill);
+    placeholder->setPalette(placeholderPalette);
+    placeholder->setAutoFillBackground(true);
+    placeholder->setVisible(false);
+    m_placeholderWidget = placeholder;
 
     auto *placeholderOpacity = new QGraphicsOpacityEffect(m_placeholderWidget);
     placeholderOpacity->setOpacity(m_placeholderOpacity);
@@ -85,6 +136,9 @@ void DragGridWidget::insertWidget(int index, QWidget *widget)
     connect(widget, &QObject::destroyed, this, [this](QObject *obj) {
         handleWidgetDestroyed(obj);
     });
+
+    // 卡片内部的按钮等控件会先截获按键，必须统一转交给网格的拖拽状态机。
+    installDragKeyFilters(widget);
 
     widget->show();
     updateEmptyState();
@@ -156,32 +210,63 @@ QWidget *DragGridWidget::takeWidget(int index)
     // 删除拖拽中的控件时按取消处理，避免把临时占位顺序提交为业务顺序。
     if (targetWidget == m_draggedWidget) {
         cancelDrag();
-        index = m_gridLayout->indexOf(targetWidget);
     }
 
-    targetWidget = m_gridLayout->takeWidget(index);
+    // widgets() 会跳过非 widget 布局项（例如调用方加入的 spacer），它返回的索引
+    // 不能直接当作布局索引使用，必须按控件重新换算，否则会摘错对象。
+    const int layoutIndex = m_gridLayout->indexOf(targetWidget);
+    if (layoutIndex < 0) {
+        return nullptr;
+    }
+
+    targetWidget = m_gridLayout->takeWidget(layoutIndex);
     if (!targetWidget) {
         return nullptr;
     }
 
-    // 控件已脱离网格，断开 destroyed 回调，避免移除后的销毁触发无关的状态刷新。
-    disconnect(targetWidget, &QObject::destroyed, this, nullptr);
-    targetWidget->hide();
-    targetWidget->setParent(nullptr);
+    // 控件已脱离网格，断开回调并卸载按键过滤器，避免移除后的操作触发无关状态。
+    detachWidget(targetWidget);
     updatePlaceholder();
     updateEmptyState();
     return targetWidget;
 }
 
+void DragGridWidget::detachWidget(QWidget *widget)
+{
+    if (!widget) {
+        return;
+    }
+
+    removeDragKeyFilters(widget);
+    disconnect(widget, &QObject::destroyed, this, nullptr);
+    widget->hide();
+    widget->setParent(nullptr);
+}
+
 void DragGridWidget::clear()
 {
-    while (count() > 0) {
-        QWidget *widget = takeWidget(0);
+    // 拖拽目标也在待清列表里，先按取消处理，避免把临时占位顺序写回业务顺序。
+    if (m_dragState == DragState::Dragging) {
+        cancelDrag();
+    }
+    m_dragState = DragState::Idle;
+    m_pressWidget = nullptr;
+
+    // 用 takeAt 而不是 count()+takeWidget()：布局中可能存在非 widget 项
+    //（例如调用方通过 layout()->addItem() 加入的 spacer），此时 count() 永远
+    // 大于 0，而 widgets() 取不到任何控件，循环会卡死。
+    QLayoutItem *item = nullptr;
+    while ((item = m_gridLayout->takeAt(0)) != nullptr) {
+        QWidget *widget = item->widget();
+        delete item;
         if (!widget) {
             continue;
         }
+        detachWidget(widget);
         widget->deleteLater();
     }
+
+    updatePlaceholder();
     updateEmptyState();
     updateGeometry();
 }
@@ -251,7 +336,8 @@ qreal DragGridWidget::ghostScale() const
 
 void DragGridWidget::setGhostScale(qreal scale)
 {
-    m_ghostScale = qMax(1.0, scale);
+    // 上限用于约束镜像位图的内存占用：缩放比例按面积增长。
+    m_ghostScale = qBound(1.0, scale, 3.0);
 }
 
 QWidget *DragGridWidget::dragHandle() const
@@ -473,14 +559,7 @@ void DragGridWidget::mouseMoveEvent(QMouseEvent *event)
     }
 
     const QPoint cursorPos = event->pos();
-    updateDragGhostPosition(cursorPos);
-
-    const int placeholderIndex = m_gridLayout->targetIndexAt(cursorPos);
-    if (placeholderIndex >= 0 && placeholderIndex != m_gridLayout->placeholderIndex()) {
-        m_gridLayout->setPlaceholderIndex(placeholderIndex);
-        m_gridLayout->activate();
-        updatePlaceholder();
-    }
+    updateDragFeedback(cursorPos);
 
     event->accept();
 }
@@ -494,6 +573,9 @@ void DragGridWidget::mouseReleaseEvent(QMouseEvent *event)
 
     if (m_dragState == DragState::Dragging) {
         finishDrag();
+        // show() 可能已经消费掉 dirty 标记，而落位动画需要一次以幽灵位置为
+        // 起点的布局计算，这里强制重新布局。
+        m_gridLayout->invalidate();
         m_gridLayout->activate();
         event->accept();
         return;
@@ -518,7 +600,12 @@ void DragGridWidget::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Space:
         if (m_dragState == DragState::Idle) {
             startKeyboardDrag();
-            event->accept();
+            if (m_dragState == DragState::Dragging) {
+                event->accept();
+            } else {
+                // 没找到可拖拽的卡片时不吞按键，交还原控件（如按钮激活）。
+                QWidget::keyPressEvent(event);
+            }
         } else {
             QWidget::keyPressEvent(event);
         }
@@ -540,6 +627,7 @@ void DragGridWidget::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Enter:
         if (m_dragState == DragState::Dragging) {
             finishDrag();
+            m_gridLayout->invalidate();
             m_gridLayout->activate();
             event->accept();
         } else {
@@ -569,6 +657,77 @@ void DragGridWidget::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     updateEmptyState();
+}
+
+bool DragGridWidget::eventFilter(QObject *watched, QEvent *event)
+{
+    if (m_dragEnable) {
+        if (event->type() == QEvent::KeyRelease && m_dragState == DragState::Dragging) {
+            auto *releaseEvent = static_cast<QKeyEvent *>(event);
+            if (releaseEvent->key() == Qt::Key_Space) {
+                // 与拾取时被吞掉的 KeyPress 配对，避免按钮收到无按下状态的释放。
+                return true;
+            }
+        }
+
+        if (event->type() == QEvent::KeyPress) {
+            auto *keyEvent = static_cast<QKeyEvent *>(event);
+            const int key = keyEvent->key();
+            // 拖拽进行中，导航与提交键必须由网格独占；空闲时只接管 Space（拾取）。
+            // 其余按键保持控件原有语义，避免影响卡片内的输入框、按钮等。
+            const bool dragNavigationKey =
+                    m_dragState == DragState::Dragging
+                    && (key == Qt::Key_Left || key == Qt::Key_Right
+                        || key == Qt::Key_Up || key == Qt::Key_Down
+                        || key == Qt::Key_Return || key == Qt::Key_Enter
+                        || key == Qt::Key_Escape);
+
+            if (dragNavigationKey
+                || (key == Qt::Key_Space && !spaceBelongsToFocusWidget(watched))) {
+                keyPressEvent(keyEvent);
+                if (keyEvent->isAccepted()) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return QWidget::eventFilter(watched, event);
+}
+
+void DragGridWidget::installDragKeyFilters(QWidget *root)
+{
+    if (!root) {
+        return;
+    }
+
+    // 若整棵子树属于嵌套网格，交给内层自行处理。
+    if (belongsToNestedGrid(root, this)) {
+        return;
+    }
+
+    // 卡片通常在构造期就建好全部子控件；对已存在的后代统一安装即可。
+    root->installEventFilter(this);
+    const QList<QWidget *> descendants = root->findChildren<QWidget *>();
+    for (QWidget *child : descendants) {
+        if (belongsToNestedGrid(child, this)) {
+            continue;
+        }
+        child->installEventFilter(this);
+    }
+}
+
+void DragGridWidget::removeDragKeyFilters(QWidget *root)
+{
+    if (!root) {
+        return;
+    }
+
+    root->removeEventFilter(this);
+    const QList<QWidget *> descendants = root->findChildren<QWidget *>();
+    for (QWidget *child : descendants) {
+        child->removeEventFilter(this);
+    }
 }
 
 void DragGridWidget::slot_scrollTimer_timeOut()
@@ -752,6 +911,10 @@ void DragGridWidget::cancelDrag()
         draggedWidget->show();
         draggedWidget->setFocus();
     }
+
+    // show() 可能同步激活布局并清掉 dirty，这里再推一次，保证占位槽被回收。
+    m_gridLayout->invalidate();
+    m_gridLayout->activate();
 }
 
 bool DragGridWidget::reorderForPlaceholder(int *from, int *to)
@@ -779,7 +942,6 @@ bool DragGridWidget::finishDrag()
     }
 
     QWidget *draggedWidget = m_draggedWidget;
-    const int finalPlaceholderIndex = m_gridLayout->placeholderIndex();
 
     int movedFrom = -1;
     int movedTo = -1;
@@ -787,24 +949,9 @@ bool DragGridWidget::finishDrag()
     m_gridLayout->setIgnoredWidget(nullptr);
     m_gridLayout->setPlaceholderIndex(-1);
 
-    QRect targetRect;
-    if (draggedWidget && finalPlaceholderIndex >= 0) {
-        targetRect = m_gridLayout->placeholderRectAt(finalPlaceholderIndex);
-    }
-
-    if (!hasOrderChanged) {
-        cleanupDragUi();
-        if (draggedWidget) {
-            if (targetRect.isValid()) {
-                draggedWidget->setGeometry(targetRect);
-            }
-            draggedWidget->show();
-            draggedWidget->setFocus();
-        }
-        return true;
-    }
-
-    // 顺序变化时才从幽灵位置做落位动画；原位释放不能复用 ghost 的缩放几何。
+    // 只记录幽灵位置作为落位动画的起点；终点交给布局计算。
+    // 此处不能用 layout 的 geometry 手工推算目标矩形：布局可能尚未刷新，
+    // 算出的矩形与 activate() 的真实结果不一致，落位会先跳到错误尺寸再纠正。
     QRect ghostRect;
     if (m_dragGhostWidget) {
         ghostRect = m_dragGhostWidget->geometry();
@@ -813,27 +960,10 @@ bool DragGridWidget::finishDrag()
     cleanupDragUi();
 
     if (draggedWidget) {
-        if (targetRect.isValid()) {
-            // 如果幽灵可见，从幽灵位置动画归位；否则直接落位。
-            if (ghostRect.isValid() && m_animationDuration > 0) {
-                draggedWidget->setGeometry(ghostRect);
-                draggedWidget->show();
-
-                auto *settleAnimation = new QPropertyAnimation(draggedWidget, "geometry", draggedWidget);
-                settleAnimation->setDuration(m_animationDuration);
-                settleAnimation->setEasingCurve(QEasingCurve::OutCubic);
-                settleAnimation->setStartValue(ghostRect);
-                settleAnimation->setEndValue(targetRect);
-                connect(settleAnimation, &QPropertyAnimation::finished, draggedWidget, [settleAnimation]() {
-                    settleAnimation->deleteLater();
-                });
-                settleAnimation->start();
-            } else {
-                draggedWidget->setGeometry(targetRect);
-                draggedWidget->show();
-            }
-        } else {
-            draggedWidget->show();
+        // show() 会同步激活布局，必须在它之后再写入起点，否则起点会被覆盖。
+        draggedWidget->show();
+        if (hasOrderChanged && ghostRect.isValid() && m_animationDuration > 0) {
+            draggedWidget->setGeometry(ghostRect);
         }
         draggedWidget->setFocus();
     }
@@ -873,26 +1003,36 @@ void DragGridWidget::createDragGhost(QWidget *source)
 
     clearDragGhost();
 
-    const QPixmap sourcePixmap = source->grab();
-    const QSize scaledSize(qMax(1, static_cast<int>(source->width() * m_ghostScale)),
-                           qMax(1, static_cast<int>(source->height() * m_ghostScale)));
-    const QPixmap scaledPixmap = sourcePixmap.scaled(scaledSize,
+    // grab() 返回的是 DPR-aware 位图：像素尺寸 = 逻辑尺寸 * devicePixelRatio。
+    // scaled() 按设备像素处理，所以先归一到 DPR 1.0 再缩放，最后按原 DPR 交还，
+    // 否则 150%/200% 缩放下镜像的逻辑尺寸会被缩小一半、锚点也随之偏移。
+    QPixmap sourcePixmap = source->grab();
+    const qreal sourceDpr = sourcePixmap.devicePixelRatio() > 0.0
+            ? sourcePixmap.devicePixelRatio() : 1.0;
+    sourcePixmap.setDevicePixelRatio(1.0);
+
+    const QSize scaledPixels(qMax(1, qRound(sourcePixmap.width() * m_ghostScale)),
+                             qMax(1, qRound(sourcePixmap.height() * m_ghostScale)));
+    const QPixmap scaledPixmap = sourcePixmap.scaled(scaledPixels,
                                                      Qt::KeepAspectRatio,
                                                      Qt::SmoothTransformation);
 
     // 生成半透明镜像（子控件用 QPainter 控制 alpha，比 setWindowOpacity 更可靠）。
-    QPixmap ghostPixmap(scaledSize);
+    QPixmap ghostPixmap(scaledPixmap.size());
     ghostPixmap.fill(Qt::transparent);
     {
         QPainter painter(&ghostPixmap);
         painter.setOpacity(0.85);
         painter.drawPixmap(0, 0, scaledPixmap);
     }
+    // 物理像素不变，逻辑尺寸回到 source * ghostScale。
+    ghostPixmap.setDevicePixelRatio(sourceDpr);
 
     auto *ghost = new QLabel(this);
     ghost->setObjectName("GridDragGhost");
     ghost->setPixmap(ghostPixmap);
-    ghost->resize(ghostPixmap.size());
+    ghost->resize(qRound(ghostPixmap.width() / sourceDpr),
+                  qRound(ghostPixmap.height() / sourceDpr));
     ghost->setAttribute(Qt::WA_TransparentForMouseEvents);
 
     auto *shadowEffect = new QGraphicsDropShadowEffect(ghost);
@@ -920,6 +1060,18 @@ void DragGridWidget::updateDragGhostPosition(const QPoint &cursorPos)
     }
 
     m_dragGhostWidget->move(cursorPos - m_dragGhostCursorOffset);
+}
+
+void DragGridWidget::updateDragFeedback(const QPoint &cursorPos)
+{
+    updateDragGhostPosition(cursorPos);
+
+    const int placeholderIndex = m_gridLayout->targetIndexAt(cursorPos);
+    if (placeholderIndex >= 0 && placeholderIndex != m_gridLayout->placeholderIndex()) {
+        m_gridLayout->setPlaceholderIndex(placeholderIndex);
+        m_gridLayout->activate();
+        updatePlaceholder();
+    }
 }
 
 void DragGridWidget::clearDragGhost()
@@ -1010,11 +1162,22 @@ void DragGridWidget::autoScroll()
         dx = edgeSpeed(mouseInViewport.x() - (viewportWidth - margin));
     }
 
+    bool contentScrolled = false;
     if (dy != 0) {
-        vBar->setValue(qBound(vBar->minimum(), vBar->value() + dy, vBar->maximum()));
+        const int before = vBar->value();
+        vBar->setValue(qBound(vBar->minimum(), before + dy, vBar->maximum()));
+        contentScrolled = contentScrolled || (vBar->value() != before);
     }
     if (dx != 0) {
-        hBar->setValue(qBound(hBar->minimum(), hBar->value() + dx, hBar->maximum()));
+        const int before = hBar->value();
+        hBar->setValue(qBound(hBar->minimum(), before + dx, hBar->maximum()));
+        contentScrolled = contentScrolled || (hBar->value() != before);
+    }
+
+    if (contentScrolled) {
+        // 内容滚动后，同一个屏幕位置对应的容器坐标已经改变：镜像与占位符必须
+        // 立即按真实光标重算，否则落点提示会随内容一起从光标处漂开。
+        updateDragFeedback(mapFromGlobal(QCursor::pos()));
     }
 }
 

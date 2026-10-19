@@ -18,6 +18,7 @@ namespace YJDragGrid {
 
 class YJDRAGGRID_EXPORT DragGridLayout : public QLayout
 {
+    Q_OBJECT
     Q_DISABLE_COPY(DragGridLayout)
 
 public:
@@ -110,10 +111,11 @@ private:
         Qt::Alignment alignment;
     };
 
-    void invalidate() override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
     QSize effectiveCellSize(const QRect &contentRect) const;
+    // 每次按子控件当前 minimumSize 现算：控件最小尺寸可能在运行期变化，
+    // 缓存无法可靠失效（LayoutRequest 发送给父控件而非控件自身）。
     QSize minimumCellSizeForItems() const;
     int minimumColumnCount() const;
     int rowCount() const;
@@ -141,10 +143,6 @@ private:
     QWidget *m_ignoredWidget = nullptr;
     int m_placeholderIndex = -1;
     int m_animationDuration = 200;
-
-    // 缓存：invalidate 时失效，惰性计算
-    mutable QSize m_cachedMinCellSize;
-    mutable bool m_minCellSizeDirty = true;
 
     // 控件几何过渡动画
     QHash<QWidget *, QPointer<QPropertyAnimation>> m_geometryAnimations;

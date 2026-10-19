@@ -29,6 +29,7 @@ private slots:
     void placeholderIndex_withoutIgnoredWidgetDoesNotReserveSlot();
     void placeholderRect_usesStretchedIncompleteRow();
     void externalDelete_removesItemAndKeepsLayoutUsable();
+    void minimumCellSize_reflectsRuntimeWidgetMinimumSize();
 };
 
 void TestDragGridLayout::clearLayout(DragGridLayout *layout)
@@ -368,6 +369,38 @@ void TestDragGridLayout::externalDelete_removesItemAndKeepsLayoutUsable()
 
     layout->activate();
     QCOMPARE(w2->geometry().topLeft(), QPoint(0, 0));
+
+    clearLayout(layout);
+}
+
+void TestDragGridLayout::minimumCellSize_reflectsRuntimeWidgetMinimumSize()
+{
+    // 特征测试：运行期修改卡片 minimumSize 后，布局必须重新计算最小单元格。
+    // 修复前该值来自缓存，而失效通知（LayoutRequest）发送给父控件而非控件自身，
+    // 卡片自身尺寸变化不会让缓存失效，布局会继续按旧尺寸压缩卡片。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(2);
+    layout->setMinimumCellSize(QSize(50, 50));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+    container.resize(400, 400);
+
+    auto *card = new QWidget;
+    card->setMinimumSize(100, 100);
+    layout->addWidget(card);
+    layout->activate();
+
+    QCOMPARE(layout->minimumSize(), QSize(100, 100)); // 单项按单列计算
+
+    card->setMinimumSize(250, 250);
+    QCoreApplication::processEvents();
+    layout->activate();
+
+    QCOMPARE(layout->minimumSize(), QSize(250, 250));
+    QVERIFY(card->width() >= 250);
+    QVERIFY(card->height() >= 250);
 
     clearLayout(layout);
 }
