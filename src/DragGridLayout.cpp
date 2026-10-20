@@ -77,8 +77,22 @@ void DragGridLayout::insertWidget(int index, QWidget *widget, Qt::Alignment alig
     connect(widget, &QObject::destroyed, this, [this](QObject *obj) {
         removeDestroyedWidget(qobject_cast<QWidget *>(obj));
     });
+    const int insertIndex = clampedInsertIndex(index);
+    const int placeholderAnchor = placeholderAnchorIndex();
+
     auto *item = new QWidgetItem(widget);
-    m_items.insert(clampedInsertIndex(index), Item{item, alignment});
+    m_items.insert(insertIndex, Item{item, alignment});
+
+    // 新项插在占位锚点之前时，占位槽随锚点右移；插在锚点处或之后则保持原位。
+    if (m_placeholderIndex >= 0) {
+        const int adjustedAnchor = insertIndex < placeholderAnchor
+                ? placeholderAnchor + 1
+                : placeholderAnchor;
+        const int ignoredIndex = m_ignoredWidget ? indexOf(m_ignoredWidget) : -1;
+        m_placeholderIndex = qBound(0, adjustedAnchor - (ignoredIndex >= 0 && ignoredIndex < adjustedAnchor ? 1 : 0),
+                                    m_items.size() - 1);
+    }
+
     invalidate();
 }
 
@@ -97,6 +111,7 @@ QLayoutItem *DragGridLayout::takeAt(int index)
         return nullptr;
     }
 
+    const int placeholderAnchor = placeholderAnchorIndex();
     Item item = m_items.takeAt(index);
     const bool removedIgnoredWidget = m_ignoredWidget && item.layoutItem
             && item.layoutItem->widget() == m_ignoredWidget;
@@ -109,12 +124,23 @@ QLayoutItem *DragGridLayout::takeAt(int index)
         stopAnimationForWidget(widget);
     }
 
-    // 占位符索引是视觉槽位，项目减少后可能越界；被忽略项被移除时占位含义也消失。
+    // 占位槽以锚点为基准：删除锚点之前的项时锚点左移，删除锚点处及其后的项
+    // 则锚点不动；被忽略项被移除时占位含义直接消失。
     if (removedIgnoredWidget) {
         m_ignoredWidget = nullptr;
         m_placeholderIndex = -1;
-    } else if (m_placeholderIndex >= m_items.size()) {
-        m_placeholderIndex = m_items.isEmpty() ? -1 : m_items.size() - 1;
+    } else if (m_placeholderIndex >= 0) {
+        if (m_items.isEmpty()) {
+            m_placeholderIndex = -1;
+        } else {
+            const int adjustedAnchor = index < placeholderAnchor
+                    ? placeholderAnchor - 1
+                    : placeholderAnchor;
+            const int ignoredIndex = m_ignoredWidget ? indexOf(m_ignoredWidget) : -1;
+            m_placeholderIndex = qBound(0,
+                                        adjustedAnchor - (ignoredIndex >= 0 && ignoredIndex < adjustedAnchor ? 1 : 0),
+                                        m_items.size() - 1);
+        }
     }
 
     invalidate();
@@ -478,6 +504,19 @@ bool DragGridLayout::hasActivePlaceholder() const
             && m_placeholderIndex >= 0 && m_placeholderIndex < m_items.size();
 }
 
+int DragGridLayout::placeholderAnchorIndex() const
+{
+    if (m_placeholderIndex < 0) {
+        return -1;
+    }
+
+    // 忽略项在槽位之前时会被布局跳过，槽位对应的插入点因此后移一项。
+    const int ignoredIndex = m_ignoredWidget ? indexOf(m_ignoredWidget) : -1;
+    const int anchor = m_placeholderIndex
+            + (ignoredIndex >= 0 && ignoredIndex <= m_placeholderIndex ? 1 : 0);
+    return qBound(0, anchor, m_items.size());
+}
+
 int DragGridLayout::visualItemCount() const
 {
     return m_items.size();
@@ -592,11 +631,14 @@ void DragGridLayout::removeDestroyedWidget(QWidget *widget)
 
     // 此时控件处于析构中：只删除布局项、清理动画表项与忽略标记，
     // 不得调用控件任何成员函数。
+    const int placeholderAnchor = placeholderAnchorIndex();
+    int removedIndex = -1;
     for (int index = 0; index < m_items.size(); ++index) {
         const Item &item = m_items.at(index);
         if (item.layoutItem && item.layoutItem->widget() == widget) {
             delete item.layoutItem;
             m_items.removeAt(index);
+            removedIndex = index;
             break;
         }
     }
@@ -608,9 +650,18 @@ void DragGridLayout::removeDestroyedWidget(QWidget *widget)
         // 被忽略项即占位槽的"洞"，控件没了占位含义也随之消失。
         m_ignoredWidget = nullptr;
         m_placeholderIndex = -1;
-    } else if (m_placeholderIndex >= m_items.size()) {
-        // 其他控件被销毁时项目数减少，占位索引必须收回到有效槽位。
-        m_placeholderIndex = m_items.isEmpty() ? -1 : m_items.size() - 1;
+    } else if (m_placeholderIndex >= 0) {
+        if (m_items.isEmpty()) {
+            m_placeholderIndex = -1;
+        } else {
+            const int adjustedAnchor = removedIndex >= 0 && removedIndex < placeholderAnchor
+                    ? placeholderAnchor - 1
+                    : placeholderAnchor;
+            const int ignoredIndex = m_ignoredWidget ? indexOf(m_ignoredWidget) : -1;
+            m_placeholderIndex = qBound(0,
+                                        adjustedAnchor - (ignoredIndex >= 0 && ignoredIndex < adjustedAnchor ? 1 : 0),
+                                        m_items.size() - 1);
+        }
     }
 
     invalidate();

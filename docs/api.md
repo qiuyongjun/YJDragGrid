@@ -4,12 +4,12 @@ This document describes the public behavior of `YJDragGrid::DragGridWidget`.
 
 ## Ownership
 
-- `addWidget()` and `insertWidget()` add a widget to the grid layout. The widget remains a Qt child of the grid container.
+- `addWidget()` appends a widget at the end of the layout item list; `insertWidget(index)` inserts by `widgets()` order. The widget remains a Qt child of the grid container.
 - `removeWidget()` removes the widget from the grid and clears its parent. The widget is hidden and the caller owns it afterwards.
-- `takeWidget()` removes and returns the widget at the requested index. The returned widget is hidden and has no parent; call `show()` before displaying it again.
+- `takeWidget(index)` removes and returns the widget at the requested `widgets()` index. The returned widget is hidden and has no parent; call `show()` before displaying it again.
 - `deleteWidget()` removes the widget and schedules it for deletion with `deleteLater()`.
 - `clear()` removes every layout item and schedules each managed widget for deletion with `deleteLater()`. Non-widget items (for example spacers added through `layout()->addItem()`) are deleted with their layout item.
-- `count()` returns the number of layout items, including non-widget items. `widgets()` returns the managed widgets only; the empty state is driven by `widgets()`, so a grid holding nothing but a spacer still shows its empty-state label.
+- `count()` returns the number of layout items, including non-widget items. `widgets()` returns the managed widgets only; its order is the index space used by `insertWidget()` and `takeWidget()`, so when spacers are present `count()` can be larger than `widgets().size()`. The empty state is driven by `widgets()`, so a grid holding nothing but a spacer still shows its empty-state label.
 - If a managed widget is destroyed externally (without `removeWidget()` / `deleteWidget()`), the grid automatically removes it from the layout, cleans up, and refreshes the empty state immediately. Do not rely on this for normal removal; use the ownership API above.
 - Destroying the grid container while a drag is active is safe; drag UI state is reset during destruction and never touches already-destroyed internals.
 
@@ -24,6 +24,7 @@ This document describes the public behavior of `YJDragGrid::DragGridWidget`.
 ## Dragging
 
 - `dragHandle` restricts where a mouse drag can start: only the handle itself or its descendants can pick up a card. The handle must live inside a card that is already added to the grid; a handle outside every card silently disables dragging.
+- The handle subtree must not consume mouse presses. Controls such as `QPushButton` accept the press before the grid sees it, so pressing them never starts a drag; use a passive widget (for example a `QLabel`) as the handle, or make interactive handle children mouse-transparent when clicking them is not required.
 - Dragging starts only when `dragEnabled` is true.
 - `dragThreshold` values below zero are treated as zero.
 - `ghostScale` is clamped to the range `1.0`–`3.0`.

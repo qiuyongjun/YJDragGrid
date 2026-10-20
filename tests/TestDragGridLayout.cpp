@@ -33,6 +33,10 @@ private slots:
     void externalDelete_removesItemAndKeepsLayoutUsable();
     void addItem_managesWidgetLifecycle();
     void targetIndexAt_compensatesByCurrentPlaceholderIndex();
+    void placeholderIndex_shiftsWhenItemBeforeSlotRemoved();
+    void placeholderIndex_shiftsWhenItemRightAfterSlotRemoved();
+    void placeholderIndex_shiftsWhenExternalDeleteBeforeSlot();
+    void placeholderIndex_shiftsWhenItemBeforeSlotInserted();
     void minimumCellSize_reflectsRuntimeWidgetMinimumSize();
     void minimumSize_widthCoversOccupiedColumns();
 };
@@ -275,6 +279,7 @@ void TestDragGridLayout::targetIndexAt_compensatesIgnoredSlotWhenDraggingRightwa
 
     // 向右拖：w1 被忽略，静态槽位 1/2 上的项目实际是 w2/w3。
     layout->setIgnoredWidget(w1);
+    layout->setPlaceholderIndex(0);
     layout->activate();
     // w2 左半区 → 插在 w2 之前 → 顺序不变
     QCOMPARE(layout->targetIndexAt(QPoint(140, 50)), 0);
@@ -288,6 +293,7 @@ void TestDragGridLayout::targetIndexAt_compensatesIgnoredSlotWhenDraggingRightwa
 
     // 向左拖：被拖项右侧无保留槽，无需补偿。
     layout->setIgnoredWidget(w3);
+    layout->setPlaceholderIndex(2);
     layout->activate();
     // w1 左半区 → 插在 w1 之前
     QCOMPARE(layout->targetIndexAt(QPoint(40, 50)), 0);
@@ -528,6 +534,141 @@ void TestDragGridLayout::targetIndexAt_compensatesByCurrentPlaceholderIndex()
     layout->activate();
     QCOMPARE(layout->targetIndexAt(QPoint(150, y)), 0); // first 新位置左半区：插其前
     QCOMPARE(layout->targetIndexAt(QPoint(270, y)), 1); // second 新位置左半区：插其前
+}
+
+void TestDragGridLayout::placeholderIndex_shiftsWhenItemBeforeSlotRemoved()
+{
+    // 特征测试：拖拽中删除占位槽之前的项目，占位索引必须左移。
+    // 修复前只做越界收回，占位槽会指向删除后的错误位置，落点偏后一格。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(3);
+    layout->setMinimumCellSize(QSize(100, 100));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+
+    auto *w1 = createLayoutItem();
+    auto *w2 = createLayoutItem();
+    auto *w3 = createLayoutItem();
+    auto *w4 = createLayoutItem();
+    layout->addWidget(w1);
+    layout->addWidget(w2);
+    layout->addWidget(w3);
+    layout->addWidget(w4);
+
+    layout->setIgnoredWidget(w1);
+    layout->setPlaceholderIndex(2);
+    layout->activate();
+
+    QWidget *removed = layout->takeWidget(layout->indexOf(w2));
+    QVERIFY(removed);
+    QCOMPARE(layout->placeholderIndex(), 1);
+
+    // 占位槽之后的删除不应移动索引。
+    delete w4;
+    QCOMPARE(layout->placeholderIndex(), 1);
+
+    delete removed;
+    layout->setIgnoredWidget(nullptr);
+    layout->setPlaceholderIndex(-1);
+    clearLayout(layout);
+}
+
+void TestDragGridLayout::placeholderIndex_shiftsWhenItemRightAfterSlotRemoved()
+{
+    // 特征测试：被忽略项位于占位槽之前时，占位槽在布局序列中的锚点会后移一项；
+    // 删除紧邻占位槽之后的那一项（布局索引等于占位索引）同样必须左移。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(4);
+    layout->setMinimumCellSize(QSize(100, 100));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+
+    auto *w1 = createLayoutItem();
+    auto *w2 = createLayoutItem();
+    auto *w3 = createLayoutItem();
+    auto *w4 = createLayoutItem();
+    layout->addWidget(w1);
+    layout->addWidget(w2);
+    layout->addWidget(w3);
+    layout->addWidget(w4);
+
+    layout->setIgnoredWidget(w1);
+    layout->setPlaceholderIndex(2); // 视觉顺序：[w2, w3, 占位, w4]
+    layout->activate();
+
+    QWidget *removed = layout->takeWidget(layout->indexOf(w3));
+    QVERIFY(removed);
+    QCOMPARE(layout->placeholderIndex(), 1);
+
+    delete removed;
+    layout->setIgnoredWidget(nullptr);
+    layout->setPlaceholderIndex(-1);
+    clearLayout(layout);
+}
+
+void TestDragGridLayout::placeholderIndex_shiftsWhenExternalDeleteBeforeSlot()
+{
+    // 特征测试：外部直接 delete 占位槽之前的项目（走 removeDestroyedWidget），
+    // 占位索引同样要左移。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(3);
+    layout->setMinimumCellSize(QSize(100, 100));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+
+    auto *w1 = createLayoutItem();
+    auto *w2 = createLayoutItem();
+    auto *w3 = createLayoutItem();
+    layout->addWidget(w1);
+    layout->addWidget(w2);
+    layout->addWidget(w3);
+
+    layout->setIgnoredWidget(w1);
+    layout->setPlaceholderIndex(2);
+    layout->activate();
+
+    delete w2;
+    QCOMPARE(layout->count(), 2);
+    QCOMPARE(layout->placeholderIndex(), 1);
+
+    layout->setIgnoredWidget(nullptr);
+    layout->setPlaceholderIndex(-1);
+    clearLayout(layout);
+}
+
+void TestDragGridLayout::placeholderIndex_shiftsWhenItemBeforeSlotInserted()
+{
+    // 特征测试：在占位槽之前插入项目时，占位索引必须右移，保持落点相对不变。
+    DragGridLayout layout;
+    layout.setColumnCount(3);
+    layout.setMinimumCellSize(QSize(100, 100));
+
+    auto *w1 = createLayoutItem();
+    auto *w2 = createLayoutItem();
+    auto *w3 = createLayoutItem();
+    layout.addWidget(w1);
+    layout.addWidget(w2);
+    layout.addWidget(w3);
+
+    layout.setIgnoredWidget(w1);
+    layout.setPlaceholderIndex(2);
+
+    layout.insertWidget(1, createLayoutItem());
+    QCOMPARE(layout.placeholderIndex(), 3);
+
+    // 插在占位索引处同样视为"占位槽之前"，占位槽顺延。
+    layout.insertWidget(3, createLayoutItem());
+    QCOMPARE(layout.placeholderIndex(), 4);
+
+    layout.setIgnoredWidget(nullptr);
+    layout.setPlaceholderIndex(-1);
+    clearLayout(&layout);
 }
 
 void TestDragGridLayout::minimumCellSize_reflectsRuntimeWidgetMinimumSize()

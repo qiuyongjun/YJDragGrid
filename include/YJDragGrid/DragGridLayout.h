@@ -121,6 +121,9 @@ private:
     int minimumColumnCount() const;
     int rowCount() const;
     bool hasActivePlaceholder() const;
+    // 返回占位槽在布局项序列中的锚点：槽位位于该索引项之前，等于 count() 表示末尾；
+    // 无占位槽时返回 -1。
+    int placeholderAnchorIndex() const;
     int visualItemCount() const;
     QSize expandedSizeForItem(const Item &item, const QSize &cellSize) const;
     int clampedInsertIndex(int index) const;

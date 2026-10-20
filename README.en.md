@@ -95,10 +95,10 @@ See [docs/api.md](docs/api.md) for the public behavior contract.
 - `void setEqualCellSizeEnabled(bool enable)` — Make all cells the same width.
 - `void setFillIncompleteRowEnabled(bool enable)` — Fill incomplete rows by spreading their remaining items across the row.
 - `void setCompactWhenSparseEnabled(bool enable)` — Compatibility alias for `setFillIncompleteRowEnabled`.
-- `void addWidget(QWidget *widget)` / `void insertWidget(int index, QWidget *widget)` — Add items.
-- `void removeWidget(QWidget *widget)` / `void deleteWidget(QWidget *widget)` / `QWidget *takeWidget(int index)` — Remove items.
+- `void addWidget(QWidget *widget)` — Append an item; `void insertWidget(int index, QWidget *widget)` — Insert an item by `widgets()` order.
+- `void removeWidget(QWidget *widget)` / `void deleteWidget(QWidget *widget)` / `QWidget *takeWidget(int index)` — Remove items (`takeWidget` indexes by `widgets()` order).
 - `void clear()` — Remove and destroy all items.
-- `int count() const` / `QList<QWidget *> widgets() const` — Query current items.
+- `int count() const` / `QList<QWidget *> widgets() const` — Query current items; `count()` includes non-widget layout items.
 - `void orderChanged()` — Signal emitted when the user reorders items by dragging.
 - `void itemMoved(int from, int to)` — Signal emitted with the moved item's original and final index.
 - `void orderUpdated(const QList<QWidget *> &widgets)` — Signal emitted with the complete order after a user reorder.
@@ -106,7 +106,7 @@ See [docs/api.md](docs/api.md) for the public behavior contract.
 - `qreal ghostScale() / void setGhostScale(qreal)` — Scale factor of the drag ghost (default 1.05, clamped to 1.0–3.0).
 - `int animationDuration() / void setAnimationDuration(int)` — Layout transition duration in milliseconds (default 200).
 - `int scrollTimerInterval() / void setScrollTimerInterval(int)` — Auto-scroll timer interval in milliseconds (default 16).
-- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — Optional handle widget; only presses inside the handle start a drag.
+- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — Optional handle widget; only presses inside the handle start a drag. Do not put mouse-accepting controls (such as buttons) inside the handle, or the press never reaches the grid.
 - `int autoScrollMargin() / void setAutoScrollMargin(int)` — Distance from viewport edge that triggers auto-scroll (default 40).
 - `int autoScrollMaxSpeed() / void setAutoScrollMaxSpeed(int)` — Maximum auto-scroll speed in pixels (default 16).
 - `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — Opacity of the drop placeholder (default 0.5).

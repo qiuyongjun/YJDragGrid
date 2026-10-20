@@ -97,8 +97,8 @@ grid->addWidget(new MyCardWidget());
 - `void setEqualCellSizeEnabled(bool enable)` — 是否让所有单元格等宽。
 - `void setFillIncompleteRowEnabled(bool enable)` — 不完整行是否按剩余项目数填满整行。
 - `void setCompactWhenSparseEnabled(bool enable)` — 兼容旧接口，等同于 `setFillIncompleteRowEnabled`。
-- `void addWidget(QWidget *widget)` / `void insertWidget(int index, QWidget *widget)` — 添加子控件。
-- `void removeWidget(QWidget *widget)` / `void deleteWidget(QWidget *widget)` / `QWidget *takeWidget(int index)` — 移除子控件。
+- `void addWidget(QWidget *widget)` — 追加子控件；`void insertWidget(int index, QWidget *widget)` — 按 `widgets()` 顺序插入子控件。
+- `void removeWidget(QWidget *widget)` / `void deleteWidget(QWidget *widget)` / `QWidget *takeWidget(int index)` — 移除子控件（`takeWidget` 的索引按 `widgets()` 顺序）。
 - `void clear()` — 清空并销毁所有子控件。
 - `int count() const` — 布局项数量（含 spacer 等非 widget 项）；`QList<QWidget *> widgets() const` — 当前控件顺序。
 - `void orderChanged()` — 用户通过拖拽改变顺序时发出的信号。
@@ -108,7 +108,7 @@ grid->addWidget(new MyCardWidget());
 - `qreal ghostScale() / void setGhostScale(qreal)` — 拖拽镜像缩放比例（默认 1.05，取值 1.0–3.0）。
 - `int animationDuration() / void setAnimationDuration(int)` — 布局过渡动画时长，单位毫秒（默认 200）。
 - `int scrollTimerInterval() / void setScrollTimerInterval(int)` — 自动滚动定时器间隔，单位毫秒（默认 16）。
-- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — 可选拖拽手柄；仅在手柄区域内按下才启动拖拽。
+- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — 可选拖拽手柄；仅在手柄区域内按下才启动拖拽。手柄内不要放置会接受鼠标事件的控件（如按钮），否则按下事件不会到达网格。
 - `int autoScrollMargin() / void setAutoScrollMargin(int)` — 触发自动滚动的视口边缘距离（默认 40）。
 - `int autoScrollMaxSpeed() / void setAutoScrollMaxSpeed(int)` — 自动滚动最大速度，单位像素（默认 16）。
 - `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — 占位符透明度（默认 0.5）。

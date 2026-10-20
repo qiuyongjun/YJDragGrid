@@ -47,13 +47,13 @@ public:
 
     // 添加控件并纳入网格布局管理。
     void addWidget(QWidget *widget);
-    // 按指定顺序插入控件。
+    // 按 widgets() 顺序在指定位置插入控件；越界索引会被限制到有效范围。
     void insertWidget(int index, QWidget *widget);
     // 从网格移除控件，不销毁对象。
     void removeWidget(QWidget *widget);
     // 从网格移除控件并延迟销毁。
     void deleteWidget(QWidget *widget);
-    // 按索引取出控件，不销毁对象。
+    // 按 widgets() 顺序的索引取出控件，不销毁对象。
     QWidget *takeWidget(int index);
     // 清空并销毁所有控件。
     void clear();
@@ -186,6 +186,8 @@ private:
     void cancelDrag();
     void cleanupDragUi();
     void updatePlaceholder();
+    // 拖拽中布局参数变化后重算占位符几何，避免落点提示停在旧矩形。
+    void refreshPlaceholderAfterLayoutChange();
     void autoScroll();
     void ensurePlaceholderVisible();
 
@@ -213,7 +215,6 @@ private:
     QPoint m_pressOffset;
     QPoint m_dragPointOffset;
     QPoint m_dragGhostCursorOffset;
-    int m_keyboardDragStartIndex = -1;
 
     QWidget *m_dragGhostWidget = nullptr;
     QLabel  *m_emptyStateLabel = nullptr;

@@ -120,7 +120,7 @@ DragGridWidget::~DragGridWidget()
 
 void DragGridWidget::addWidget(QWidget *widget)
 {
-    insertWidget(count(), widget);
+    insertWidget(widgets().size(), widget);
 }
 
 void DragGridWidget::insertWidget(int index, QWidget *widget)
@@ -129,9 +129,17 @@ void DragGridWidget::insertWidget(int index, QWidget *widget)
         return;
     }
 
+    // 公共索引用 widgets() 顺序；布局中可能存在 spacer 等非 widget 项，
+    // 必须换算成布局索引，否则插入位置会与 takeWidget() 的语义错位。
+    const QList<QWidget *> currentWidgets = widgets();
+    const int widgetIndex = qBound(0, index, currentWidgets.size());
+    const int layoutIndex = widgetIndex < currentWidgets.size()
+            ? m_gridLayout->indexOf(currentWidgets.at(widgetIndex))
+            : m_gridLayout->count();
+
     // 布局先连接 destroyed（其回调先摘除布局项）；本类回调后连接、后执行，
     // 执行时 count() 已不含被销毁控件，空状态刷新才能得到准确结果。
-    m_gridLayout->insertWidget(index, widget);
+    m_gridLayout->insertWidget(layoutIndex, widget);
 
     // 控件被外部直接销毁时安全终止拖拽，避免 m_draggedWidget / m_pressWidget 悬垂。
     connect(widget, &QObject::destroyed, this, [this](QObject *obj) {
@@ -144,6 +152,7 @@ void DragGridWidget::insertWidget(int index, QWidget *widget)
     widget->show();
     updateEmptyState();
     updateGeometry();
+    refreshPlaceholderAfterLayoutChange();
 }
 
 void DragGridWidget::handleWidgetDestroyed(QObject *obj)
@@ -185,8 +194,9 @@ void DragGridWidget::handleWidgetDestroyed(QObject *obj)
 void DragGridWidget::removeWidget(QWidget *widget)
 {
     // 将控件从布局中移除并解除父子关系；调用者获得 widget 所有权，需自行管理生命周期。
-    QWidget *targetWidget = takeWidget(indexOfWidget(widget));
-    if (!targetWidget) {
+    // takeWidget() 按 widgets() 顺序取索引，不能直接传布局项索引（可能含 spacer）。
+    const int index = widgets().indexOf(widget);
+    if (index < 0 || !takeWidget(index)) {
         return;
     }
 
@@ -195,7 +205,12 @@ void DragGridWidget::removeWidget(QWidget *widget)
 
 void DragGridWidget::deleteWidget(QWidget *widget)
 {
-    QWidget *targetWidget = takeWidget(indexOfWidget(widget));
+    const int index = widgets().indexOf(widget);
+    if (index < 0) {
+        return;
+    }
+
+    QWidget *targetWidget = takeWidget(index);
     if (!targetWidget) {
         return;
     }
@@ -230,6 +245,7 @@ QWidget *DragGridWidget::takeWidget(int index)
 
     // 控件已脱离网格，断开回调并卸载按键过滤器，避免移除后的操作触发无关状态。
     detachWidget(targetWidget);
+    refreshPlaceholderAfterLayoutChange();
     updatePlaceholder();
     updateEmptyState();
     return targetWidget;
@@ -294,6 +310,7 @@ void DragGridWidget::setColumnCount(int columnCount)
 {
     m_gridLayout->setColumnCount(columnCount);
     updateGeometry();
+    refreshPlaceholderAfterLayoutChange();
 }
 
 QSize DragGridWidget::minimumCellSize() const
@@ -305,6 +322,7 @@ void DragGridWidget::setMinimumCellSize(const QSize &size)
 {
     m_gridLayout->setMinimumCellSize(size);
     updateGeometry();
+    refreshPlaceholderAfterLayoutChange();
 }
 
 void DragGridWidget::setDragEnabled(bool enable)
@@ -433,14 +451,25 @@ int DragGridWidget::placeholderPulseDuration() const
 void DragGridWidget::setPlaceholderPulseDuration(int ms)
 {
     m_placeholderPulseDuration = qMax(0, ms);
-    if (m_placeholderPulseAnimation) {
-        // 拖拽进行中把时长改成 0 同样会触发忙转，运行中的动画直接停掉。
-        if (m_placeholderPulseDuration <= 0
-            && m_placeholderPulseAnimation->state() == QAbstractAnimation::Running) {
-            m_placeholderPulseAnimation->stop();
-        } else {
-            m_placeholderPulseAnimation->setDuration(m_placeholderPulseDuration);
+    if (!m_placeholderPulseAnimation) {
+        return;
+    }
+
+    if (m_placeholderPulseDuration <= 0) {
+        // 0 时长表示关闭脉冲；停止后恢复基础透明度，避免停在中间帧。
+        m_placeholderPulseAnimation->stop();
+        auto *opacityEffect = qobject_cast<QGraphicsOpacityEffect *>(m_placeholderWidget->graphicsEffect());
+        if (opacityEffect) {
+            opacityEffect->setOpacity(m_placeholderOpacity);
         }
+        return;
+    }
+
+    m_placeholderPulseAnimation->setDuration(m_placeholderPulseDuration);
+    // 拖拽中从 0 改回正值时动画已停止，需要立即恢复，而不是等下一次拖拽。
+    if (m_dragState == DragState::Dragging && m_placeholderWidget->isVisible()
+        && m_placeholderPulseAnimation->state() != QAbstractAnimation::Running) {
+        m_placeholderPulseAnimation->start();
     }
 }
 
@@ -448,6 +477,7 @@ void DragGridWidget::setEqualCellSizeEnabled(bool enable)
 {
     m_gridLayout->setEqualCellSizeEnabled(enable);
     updateGeometry();
+    refreshPlaceholderAfterLayoutChange();
 }
 
 bool DragGridWidget::equalCellSizeEnabled() const
@@ -459,6 +489,7 @@ void DragGridWidget::setFillIncompleteRowEnabled(bool enable)
 {
     m_gridLayout->setFillIncompleteRowEnabled(enable);
     updateGeometry();
+    refreshPlaceholderAfterLayoutChange();
 }
 
 bool DragGridWidget::fillIncompleteRowEnabled() const
@@ -674,6 +705,7 @@ void DragGridWidget::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     updateEmptyState();
+    refreshPlaceholderAfterLayoutChange();
 }
 
 bool DragGridWidget::eventFilter(QObject *watched, QEvent *event)
@@ -777,7 +809,6 @@ bool DragGridWidget::startDragOperation(QWidget *widget, const QPoint &offset, b
     if (originalIndex < 0) {
         return false;
     }
-    m_keyboardDragStartIndex = originalIndex;
 
     m_draggedWidget = widget;
     m_dragPointOffset = offset;
@@ -905,6 +936,10 @@ void DragGridWidget::cleanupDragUi()
     m_placeholderWidget->hide();
     if (m_placeholderPulseAnimation) {
         m_placeholderPulseAnimation->stop();
+        auto *opacityEffect = qobject_cast<QGraphicsOpacityEffect *>(m_placeholderWidget->graphicsEffect());
+        if (opacityEffect) {
+            opacityEffect->setOpacity(m_placeholderOpacity);
+        }
     }
 
     if (mouseGrabber() == this) {
@@ -916,7 +951,6 @@ void DragGridWidget::cleanupDragUi()
     m_draggedWidget = nullptr;
     m_dragPointOffset = QPoint();
     m_dragGhostCursorOffset = QPoint();
-    m_keyboardDragStartIndex = -1;
 }
 
 void DragGridWidget::cancelDrag()
@@ -925,12 +959,9 @@ void DragGridWidget::cancelDrag()
         return;
     }
 
-    // 恢复到拖拽前的顺序，再结束拖拽。
-    if (m_keyboardDragStartIndex >= 0) {
-        const int from = indexOfWidget(m_draggedWidget);
-        m_gridLayout->moveItem(from, m_keyboardDragStartIndex);
-    }
-
+    // 拖拽期间布局顺序从未改动（只移动占位槽），取消时无需回移。
+    // 也不能按拖拽起始索引 moveItem：期间外部增删卡片会让该索引失效，
+    // 反而把卡片挪到错误位置。
     m_gridLayout->setIgnoredWidget(nullptr);
     m_gridLayout->setPlaceholderIndex(-1);
 
@@ -1018,6 +1049,17 @@ void DragGridWidget::updatePlaceholder()
     m_placeholderWidget->setGeometry(placeholderRect);
     m_placeholderWidget->show();
     m_placeholderWidget->lower();
+}
+
+void DragGridWidget::refreshPlaceholderAfterLayoutChange()
+{
+    if (m_dragState != DragState::Dragging) {
+        return;
+    }
+
+    m_gridLayout->activate();
+    updatePlaceholder();
+    ensurePlaceholderVisible();
 }
 
 void DragGridWidget::createDragGhost(QWidget *source)
@@ -1168,9 +1210,11 @@ void DragGridWidget::autoScroll()
     const int viewportHeight = m_scrollArea->viewport()->height();
     const int viewportWidth = m_scrollArea->viewport()->width();
 
-    // 边缘区不得超过视口：否则水平/垂直两个方向会同时命中，且 margin*margin
-    // 在 int 下会符号溢出（UB）。先收窄到视口尺寸，再按 qint64 求平方。
-    const int margin = qMin(m_autoScrollMargin, qMax(1, qMin(viewportWidth, viewportHeight)));
+    // 边缘区不得超过视口的一半：上下（或左右）边缘区重叠时，else-if 会让
+    // 上半区/左半区永远获胜，光标在视口中部也可能持续滚动。先按半视口
+    // 收窄，再按 qint64 求平方，避免 margin*margin 在 int 下溢出。
+    const int margin = qMin(m_autoScrollMargin,
+                            qMax(1, qMin(viewportWidth, viewportHeight) / 2));
     const qint64 marginSquared = qMax<qint64>(1, qint64(margin) * qint64(margin));
 
     // 越靠近边缘滚动越快，平方曲线能减少刚进入边缘区域时的突兀跳动；
