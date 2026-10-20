@@ -105,7 +105,7 @@ public:
 
     // 返回触发自动滚动的视口边缘距离。
     int autoScrollMargin() const;
-    // 设置触发自动滚动的视口边缘距离。
+    // 设置触发自动滚动的视口边缘距离，超过视口较小边一半时按一半处理。
     void setAutoScrollMargin(int margin);
 
     // 返回自动滚动最大步进速度。
@@ -120,7 +120,7 @@ public:
 
     // 返回占位符脉冲动画周期。
     int placeholderPulseDuration() const;
-    // 设置占位符脉冲动画周期，单位毫秒。
+    // 设置占位符脉冲动画周期，单位毫秒；0 表示关闭脉冲。
     void setPlaceholderPulseDuration(int ms);
 
     // 设置是否让所有单元格使用统一宽度。

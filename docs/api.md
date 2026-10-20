@@ -4,13 +4,13 @@ This document describes the public behavior of `YJDragGrid::DragGridWidget`.
 
 ## Ownership
 
-- `addWidget()` appends a widget at the end of the layout item list; `insertWidget(index)` inserts by `widgets()` order. The widget remains a Qt child of the grid container.
-- `removeWidget()` removes the widget from the grid and clears its parent. The widget is hidden and the caller owns it afterwards.
+- `addWidget()` appends a widget at the end of the layout item list; `insertWidget(index)` inserts by `widgets()` order and clamps out-of-range indices to the valid range. The widget remains a Qt child of the grid container.
+- `removeWidget()` removes the widget from the grid and clears its parent. It locates the widget by pointer, so non-widget layout items do not affect it. The widget is hidden and the caller owns it afterwards.
 - `takeWidget(index)` removes and returns the widget at the requested `widgets()` index. The returned widget is hidden and has no parent; call `show()` before displaying it again.
 - `deleteWidget()` removes the widget and schedules it for deletion with `deleteLater()`.
-- `clear()` removes every layout item and schedules each managed widget for deletion with `deleteLater()`. Non-widget items (for example spacers added through `layout()->addItem()`) are deleted with their layout item.
+- `clear()` removes every layout item and schedules each managed widget for deletion with `deleteLater()`. An active drag is canceled first. Non-widget items (for example spacers added through `layout()->addItem()`) are deleted with their layout item.
 - `count()` returns the number of layout items, including non-widget items. `widgets()` returns the managed widgets only; its order is the index space used by `insertWidget()` and `takeWidget()`, so when spacers are present `count()` can be larger than `widgets().size()`. The empty state is driven by `widgets()`, so a grid holding nothing but a spacer still shows its empty-state label.
-- If a managed widget is destroyed externally (without `removeWidget()` / `deleteWidget()`), the grid automatically removes it from the layout, cleans up, and refreshes the empty state immediately. Do not rely on this for normal removal; use the ownership API above.
+- If a managed widget is destroyed externally (without `removeWidget()` / `deleteWidget()`), the grid automatically removes it from the layout, cleans up, and refreshes the empty state immediately. If that widget was being dragged, the drag is terminated safely. Do not rely on this for normal removal; use the ownership API above.
 - Destroying the grid container while a drag is active is safe; drag UI state is reset during destruction and never touches already-destroyed internals.
 
 ## Ordering
@@ -28,10 +28,12 @@ This document describes the public behavior of `YJDragGrid::DragGridWidget`.
 - Dragging starts only when `dragEnabled` is true.
 - `dragThreshold` values below zero are treated as zero.
 - `ghostScale` is clamped to the range `1.0`–`3.0`.
-- Calling `setDragEnabled(false)` while dragging cancels the drag and restores the original order.
-- Calling `deleteWidget()` or `takeWidget()` for the dragged widget cancels the drag before removal.
+- Calling `setDragEnabled(false)` while dragging cancels the drag; the existing order is left unchanged.
+- Calling `removeWidget()`, `deleteWidget()` or `takeWidget()` for the dragged widget cancels the drag before removal.
+- Canceling a drag (`Escape`, `setDragEnabled(false)`, or removing the dragged widget) never reorders the cards; additions or removals made through the API during the drag are preserved.
 - Starting a drag never scrolls the viewport: if the dragged widget holds focus, focus is cleared before it is hidden, so Qt's focus-driven scroll-to-widget does not jump the content.
-- Edge auto-scroll runs only during mouse drags and tracks the real cursor position (`QCursor::pos()`), so it keeps scrolling while the mouse rests at the viewport edge; the step speed saturates at `autoScrollMaxSpeed`. Keyboard drags scroll the viewport through placeholder visibility (`ensurePlaceholderVisible`).
+- The placeholder follows layout changes during a drag: resizing the container or changing `columnCount`, `minimumCellSize`, `equalCellSizeEnabled` or `fillIncompleteRowEnabled` recomputes its geometry immediately, and inserting or removing other widgets keeps it anchored to the same card boundary.
+- Edge auto-scroll requires a `QScrollArea` supplied to the constructor; without one the grid still reorders but never scrolls. It runs only during mouse drags and tracks the real cursor position (`QCursor::pos()`), so it keeps scrolling while the mouse rests at the viewport edge; the step speed saturates at `autoScrollMaxSpeed`. The configured `autoScrollMargin` is capped at half the smaller viewport dimension, so opposite edge zones cannot overlap. Keyboard drags scroll the viewport through placeholder visibility (`ensurePlaceholderVisible`).
 - While edge auto-scroll moves the content, the drag ghost and the placeholder are recomputed from the real cursor position, so the landing hint stays anchored under the pointer instead of drifting with the content.
 - A mouse press while a keyboard drag is active cancels the keyboard drag first. The pressed card is then evaluated normally, so the hidden card is always restored and the state machine never keeps an orphaned drag target.
 - If the pressed widget is removed programmatically between press and drag start, the grid does not enter the dragging state; Esc and subsequent drags keep working.
@@ -40,7 +42,7 @@ This document describes the public behavior of `YJDragGrid::DragGridWidget`.
 
 ## Keyboard
 
-- `Space` picks up the focused card; arrow keys move the placeholder; `Enter` drops it; `Escape` cancels and restores the original order.
+- `Space` picks up the focused card; arrow keys move the placeholder; `Enter` drops it; `Escape` cancels and leaves the order unchanged.
 - While `dragEnabled` is true, `Space` takes priority over the activation of focusable controls inside a card (buttons, checkboxes). Without this priority a focused close button would consume `Space` and activate instead of starting a keyboard drag.
 - `Space` is left untouched for text inputs, combo boxes, sliders and scroll areas inside a card, so typing spaces keeps working. Those widgets are never turned into pick-up targets.
 - Arrow keys, `Enter` and `Escape` are only intercepted while a drag is active; otherwise they keep their normal widget semantics.
@@ -66,6 +68,7 @@ This document describes the public behavior of `YJDragGrid::DragGridWidget`.
 - Any `#GridPlaceholder` rule in a stylesheet replaces the default look. A semi-transparent `background-color` is painted over the built-in fill, so use an opaque color when the exact tone matters.
 - The empty-state label uses object name `GridEmptyState`; the drag ghost uses `GridDragGhost`.
 - The drag ghost reproduces the source card at `ghostScale` and preserves the source device pixel ratio, so it stays sharp and correctly sized on high-DPI screens.
+- `placeholderOpacity` is clamped to the range `0.0`–`1.0` and is also the base value for the pulse. `placeholderPulseDuration` controls the pulse animation; `0` disables it, switching back to a positive value while the placeholder is visible restarts it immediately, and stopping the pulse restores `placeholderOpacity`.
 
 ## Qt Properties
 

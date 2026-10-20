@@ -89,13 +89,14 @@ The legacy `DragGrid` target and `<DragGridWidget.h>` include path are kept as c
 
 See [docs/api.md](docs/api.md) for the public behavior contract.
 
+- `DragGridWidget(QScrollArea *scrollArea = nullptr, QWidget *parent = nullptr)` — Create the grid container; pass a scroll area to enable edge auto-scroll while dragging.
 - `void setDragEnabled(bool enable)` — Enable or disable drag-and-drop reordering.
 - `void setColumnCount(int count)` — Set the number of columns.
 - `void setMinimumCellSize(const QSize &size)` — Set the minimum cell size.
 - `void setEqualCellSizeEnabled(bool enable)` — Make all cells the same width.
 - `void setFillIncompleteRowEnabled(bool enable)` — Fill incomplete rows by spreading their remaining items across the row.
 - `void setCompactWhenSparseEnabled(bool enable)` — Compatibility alias for `setFillIncompleteRowEnabled`.
-- `void addWidget(QWidget *widget)` — Append an item; `void insertWidget(int index, QWidget *widget)` — Insert an item by `widgets()` order.
+- `void addWidget(QWidget *widget)` — Append an item; `void insertWidget(int index, QWidget *widget)` — Insert an item by `widgets()` order, clamping out-of-range indices.
 - `void removeWidget(QWidget *widget)` / `void deleteWidget(QWidget *widget)` / `QWidget *takeWidget(int index)` — Remove items (`takeWidget` indexes by `widgets()` order).
 - `void clear()` — Remove and destroy all items.
 - `int count() const` / `QList<QWidget *> widgets() const` — Query current items; `count()` includes non-widget layout items.
@@ -106,11 +107,11 @@ See [docs/api.md](docs/api.md) for the public behavior contract.
 - `qreal ghostScale() / void setGhostScale(qreal)` — Scale factor of the drag ghost (default 1.05, clamped to 1.0–3.0).
 - `int animationDuration() / void setAnimationDuration(int)` — Layout transition duration in milliseconds (default 200).
 - `int scrollTimerInterval() / void setScrollTimerInterval(int)` — Auto-scroll timer interval in milliseconds (default 16).
-- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — Optional handle widget; only presses inside the handle start a drag. Do not put mouse-accepting controls (such as buttons) inside the handle, or the press never reaches the grid.
-- `int autoScrollMargin() / void setAutoScrollMargin(int)` — Distance from viewport edge that triggers auto-scroll (default 40).
+- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — Optional handle widget; only presses inside the handle start a drag. Do not put mouse-accepting controls (such as buttons) inside the handle; presses on them never reach the grid and cannot start a drag.
+- `int autoScrollMargin() / void setAutoScrollMargin(int)` — Distance from viewport edge that triggers auto-scroll (default 40; capped at half the smaller viewport dimension).
 - `int autoScrollMaxSpeed() / void setAutoScrollMaxSpeed(int)` — Maximum auto-scroll speed in pixels (default 16).
-- `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — Opacity of the drop placeholder (default 0.5).
-- `int placeholderPulseDuration() / void setPlaceholderPulseDuration(int)` — Placeholder pulse duration in milliseconds (default 800).
+- `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — Opacity of the drop placeholder (default 0.5, clamped to 0.0–1.0).
+- `int placeholderPulseDuration() / void setPlaceholderPulseDuration(int)` — Placeholder pulse duration in milliseconds (default 800; `0` disables the pulse).
 - `QString emptyText() / void setEmptyText(const QString &)` — Text shown when the grid has no items.
 - `bool emptyStateVisible() / void setEmptyStateVisible(bool)` — Show or hide the empty-state text.
 
@@ -121,11 +122,11 @@ When a child widget has focus and `setDragEnabled(true)` is active:
 - `Space` — Pick up the focused card.
 - `Arrow keys` — Move the drop placeholder; the viewport scrolls automatically if the placeholder moves out of view.
 - `Enter` — Drop the card at the placeholder position.
-- `Escape` — Cancel the drag and restore the original order, returning focus to the dragged card.
+- `Escape` — Cancel the drag and keep the current order, returning focus to the dragged card.
 
 > **Note:** With dragging enabled, `Space` takes priority over activation of focusable controls inside a card; otherwise a focused button would consume `Space` and keyboard pickup would never work. Text inputs, combo boxes, sliders and scroll areas inside a card keep their normal `Space` behavior, so typing spaces still works. Arrow keys, `Enter` and `Escape` are only intercepted while a drag is active. With `dragEnabled = false` the grid intercepts nothing.
 
-> **Note:** Calling `setDragEnabled(false)` while a drag is in progress cancels the drag and restores the original order; it does not drop the card at the current placeholder.
+> **Note:** Calling `setDragEnabled(false)` while a drag is in progress cancels the drag without changing the current order; it does not drop the card at the current placeholder.
 
 ### Appearance
 
@@ -143,7 +144,7 @@ The empty-state label uses object name `GridEmptyState`; the drag ghost uses `Gr
 
 ### Drag Handle
 
-By default the whole card is draggable. To restrict dragging to a specific sub-widget (e.g. a title bar), use `setDragHandle(widget)`. The handle widget must be a descendant of the cards added to `DragGridWidget`; ownership remains with the card.
+By default the whole card is draggable. To restrict dragging to a specific sub-widget (e.g. a title bar), use `setDragHandle(widget)`. The handle widget must be a descendant of the cards added to `DragGridWidget`; ownership remains with the card. Do not put mouse-accepting controls (such as buttons) inside the handle subtree: they consume the press before the grid sees it, so dragging never starts. Use a passive widget such as `QLabel` for a read-only handle.
 
 ## Project Layout
 

@@ -91,13 +91,14 @@ grid->addWidget(new MyCardWidget());
 
 公共行为契约见 [docs/api.md](docs/api.md)。
 
+- `DragGridWidget(QScrollArea *scrollArea = nullptr, QWidget *parent = nullptr)` — 创建网格容器；传入滚动区域后启用拖拽边缘自动滚动。
 - `void setDragEnabled(bool enable)` — 启用/禁用拖拽重排。
 - `void setColumnCount(int count)` — 设置列数。
 - `void setMinimumCellSize(const QSize &size)` — 设置单元格最小尺寸。
 - `void setEqualCellSizeEnabled(bool enable)` — 是否让所有单元格等宽。
 - `void setFillIncompleteRowEnabled(bool enable)` — 不完整行是否按剩余项目数填满整行。
 - `void setCompactWhenSparseEnabled(bool enable)` — 兼容旧接口，等同于 `setFillIncompleteRowEnabled`。
-- `void addWidget(QWidget *widget)` — 追加子控件；`void insertWidget(int index, QWidget *widget)` — 按 `widgets()` 顺序插入子控件。
+- `void addWidget(QWidget *widget)` — 追加子控件；`void insertWidget(int index, QWidget *widget)` — 按 `widgets()` 顺序插入子控件，越界索引会收敛到有效范围。
 - `void removeWidget(QWidget *widget)` / `void deleteWidget(QWidget *widget)` / `QWidget *takeWidget(int index)` — 移除子控件（`takeWidget` 的索引按 `widgets()` 顺序）。
 - `void clear()` — 清空并销毁所有子控件。
 - `int count() const` — 布局项数量（含 spacer 等非 widget 项）；`QList<QWidget *> widgets() const` — 当前控件顺序。
@@ -108,11 +109,11 @@ grid->addWidget(new MyCardWidget());
 - `qreal ghostScale() / void setGhostScale(qreal)` — 拖拽镜像缩放比例（默认 1.05，取值 1.0–3.0）。
 - `int animationDuration() / void setAnimationDuration(int)` — 布局过渡动画时长，单位毫秒（默认 200）。
 - `int scrollTimerInterval() / void setScrollTimerInterval(int)` — 自动滚动定时器间隔，单位毫秒（默认 16）。
-- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — 可选拖拽手柄；仅在手柄区域内按下才启动拖拽。手柄内不要放置会接受鼠标事件的控件（如按钮），否则按下事件不会到达网格。
-- `int autoScrollMargin() / void setAutoScrollMargin(int)` — 触发自动滚动的视口边缘距离（默认 40）。
+- `QWidget *dragHandle() / void setDragHandle(QWidget *)` — 可选拖拽手柄；仅在手柄区域内按下才启动拖拽。手柄内不要放置会接受鼠标事件的控件（如按钮），否则按在这些控件上时无法启动拖拽。
+- `int autoScrollMargin() / void setAutoScrollMargin(int)` — 触发自动滚动的视口边缘距离（默认 40；超过视口较小边一半时按一半处理）。
 - `int autoScrollMaxSpeed() / void setAutoScrollMaxSpeed(int)` — 自动滚动最大速度，单位像素（默认 16）。
-- `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — 占位符透明度（默认 0.5）。
-- `int placeholderPulseDuration() / void setPlaceholderPulseDuration(int)` — 占位符脉冲动画时长，单位毫秒（默认 800）。
+- `qreal placeholderOpacity() / void setPlaceholderOpacity(qreal)` — 占位符透明度（默认 0.5，取值 0.0–1.0）。
+- `int placeholderPulseDuration() / void setPlaceholderPulseDuration(int)` — 占位符脉冲动画时长，单位毫秒（默认 800；设为 0 关闭脉冲）。
 - `QString emptyText() / void setEmptyText(const QString &)` — 设置空状态提示文本。
 - `bool emptyStateVisible() / void setEmptyStateVisible(bool)` — 显示或隐藏空状态提示。
 
@@ -123,11 +124,11 @@ grid->addWidget(new MyCardWidget());
 - `Space` — 拾取当前卡片。
 - `方向键` — 移动占位符位置；若占位符移出视口，视口会自动滚动。
 - `Enter` — 将卡片放到占位符位置。
-- `Escape` — 取消拖拽并恢复原始顺序，焦点回到被拖拽卡片。
+- `Escape` — 取消拖拽并保持当前顺序，焦点回到被拖拽卡片。
 
 > **注意：** 启用拖拽后，`Space` 的优先级高于卡片内按钮的激活动作，否则焦点停在卡片内的按钮上时无法用键盘拾取卡片。卡片内的输入框、下拉框、滑块与滚动区域不受影响，空格照常输入。禁用拖拽（`dragEnabled = false`）后按键行为完全交还原控件。方向键、`Enter`、`Escape` 只在拖拽进行中才由网格接管。
 
-> **注意：** 拖拽过程中调用 `setDragEnabled(false)` 会取消拖拽并恢复原始顺序，不会落位到当前占位符。
+> **注意：** 拖拽过程中调用 `setDragEnabled(false)` 会取消拖拽，不会落位到当前占位符，也不会改动当前顺序。
 
 ### 外观定制
 
@@ -145,7 +146,7 @@ grid->addWidget(new MyCardWidget());
 
 ### 拖拽手柄
 
-默认情况下整张卡片都可拖拽。如需限制仅在某个子控件（如标题栏）上启动拖拽，请使用 `setDragHandle(widget)`。手柄控件必须是已添加到 `DragGridWidget` 的卡片的子控件，所有权仍归卡片所有。
+默认情况下整张卡片都可拖拽。如需限制仅在某个子控件（如标题栏）上启动拖拽，请使用 `setDragHandle(widget)`。手柄控件必须是已添加到 `DragGridWidget` 的卡片的子控件，所有权仍归卡片所有。手柄子树内不要放置会接受鼠标事件的控件（如按钮），否则按下事件会被控件吞掉，拖拽无法启动；只读提示可使用 `QLabel` 等不处理鼠标的控件。
 
 ## 定位与未来计划
 
