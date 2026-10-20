@@ -53,6 +53,7 @@ This document describes the public behavior of `YJDragGrid::DragGridWidget`.
 
 - `columnCount` is clamped to at least `1`.
 - `minimumCellSize` is clamped to at least `1x1`.
+- Non-widget layout items (for example spacers added through `layout()->addItem()`) occupy a grid slot just like widgets and take part in drop-target calculation. They have no widget geometry and are not returned by `widgets()`; `count()` still includes them.
 - `equalCellSizeEnabled` expands cells to fill available row width.
 - `fillIncompleteRowEnabled` lets incomplete rows distribute their remaining items across the row.
 - `compactWhenSparseEnabled` is a compatibility alias for `fillIncompleteRowEnabled`.

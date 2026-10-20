@@ -1,3 +1,4 @@
+#include <QSpacerItem>
 #include <QTest>
 #include <QWidget>
 
@@ -29,6 +30,7 @@ private slots:
     void placeholderIndex_boundsAreRespected();
     void ignoredWidget_isSkippedInLayoutGeometry();
     void placeholderIndex_withoutIgnoredWidgetDoesNotReserveSlot();
+    void spacerItem_occupiesSameSlotInIdleAndDragStates();
     void placeholderRect_usesStretchedIncompleteRow();
     void externalDelete_removesItemAndKeepsLayoutUsable();
     void addItem_managesWidgetLifecycle();
@@ -402,6 +404,47 @@ void TestDragGridLayout::placeholderIndex_withoutIgnoredWidgetDoesNotReserveSlot
     QCOMPARE(layout->itemAt(4)->widget()->geometry(), QRect(0, 100, 200, 100));
     QCOMPARE(layout->itemAt(5)->widget()->geometry(), QRect(200, 100, 200, 100));
 
+    layout->setPlaceholderIndex(-1);
+    clearLayout(layout);
+}
+
+void TestDragGridLayout::spacerItem_occupiesSameSlotInIdleAndDragStates()
+{
+    // 特征测试：spacer 等非 widget 项与控件共用同一槽位序列。
+    // 修复前空闲布局会因 nullptr == m_ignoredWidget 跳过 spacer，拖拽时才占格，
+    // 拖拽开始/结束会让后续卡片整体跳一格。
+    QWidget container;
+    auto *layout = new DragGridLayout(&container);
+    layout->setColumnCount(3);
+    layout->setMinimumCellSize(QSize(100, 100));
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+    container.setLayout(layout);
+    container.setGeometry(0, 0, 300, 200);
+
+    auto *w1 = createLayoutItem();
+    auto *w2 = createLayoutItem();
+    auto *w3 = createLayoutItem();
+    layout->addWidget(w1);
+    layout->addWidget(w2);
+    layout->addWidget(w3);
+    layout->addItem(new QSpacerItem(10, 10));
+    QVERIFY(layout->moveItem(3, 1)); // 布局序列：[w1, spacer, w2, w3]
+    QVERIFY(!layout->itemAt(1)->widget());
+
+    layout->activate();
+    QCOMPARE(w1->geometry(), QRect(0, 0, 100, 100));
+    QCOMPARE(w2->geometry(), QRect(200, 0, 100, 100));
+    QCOMPARE(w3->geometry(), QRect(0, 100, 100, 100));
+
+    // 拖 w1 时占位槽取代 w1 的槽位，spacer 仍占同一格，其余卡片不得跳动。
+    layout->setIgnoredWidget(w1);
+    layout->setPlaceholderIndex(0);
+    layout->activate();
+    QCOMPARE(w2->geometry(), QRect(200, 0, 100, 100));
+    QCOMPARE(w3->geometry(), QRect(0, 100, 100, 100));
+
+    layout->setIgnoredWidget(nullptr);
     layout->setPlaceholderIndex(-1);
     clearLayout(layout);
 }

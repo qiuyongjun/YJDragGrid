@@ -120,7 +120,8 @@ void dragThroughPoints(DragGridWidget *grid, const QPoint &from,
     // 与 dragFromTo 相同的事件序列，但支持任意多个中间 move 事件：
     // 稳态落点行为（占位符已离位、被拖项原始索引 ≠ 当前占位索引）
     // 需要至少一次使占位符移动的 move 才能覆盖。
-    // CI 的 offscreen 后端对 QTest::mouseMove 的按键状态处理不稳定，这里显式携带 LeftButton。
+    // Qt 5.15 的 QTest::mouseMove 对 QWidget 只移动真实光标、不派发鼠标事件
+    // （offscreen 下等于空操作），这里显式构造携带 LeftButton 的 QMouseEvent。
     auto sendMouse = [grid](QEvent::Type type, const QPoint &pos,
                             Qt::MouseButton button, Qt::MouseButtons buttons) {
         QMouseEvent event(type, pos, grid->mapToGlobal(pos), button, buttons, Qt::NoModifier);
@@ -146,6 +147,27 @@ void dragThroughPoints(DragGridWidget *grid, const QPoint &from,
 void dragFromTo(DragGridWidget *grid, const QPoint &from, const QPoint &to)
 {
     dragThroughPoints(grid, from, {}, to);
+}
+
+// 按下并移动到目标点，不释放：调用方可在拖拽中插入断言或外部变化。
+// 不能依赖 QTest::mouseMove（Qt 5.15 对 QWidget 只移动光标、不派发事件），
+// 与 dragThroughPoints 一样显式构造携带 LeftButton 的 QMouseEvent。
+void beginMouseDrag(DragGridWidget *grid, const QPoint &from, const QPoint &to)
+{
+    auto sendMouse = [grid](QEvent::Type type, const QPoint &pos,
+                            Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, pos, grid->mapToGlobal(pos), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(grid, &event);
+    };
+
+    grid->activateWindow();
+    QCoreApplication::processEvents();
+
+    sendMouse(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+    sendMouse(QEvent::MouseMove, from + QPoint(30, 0), Qt::NoButton, Qt::LeftButton);
+    QCoreApplication::processEvents();
+    sendMouse(QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
+    QCoreApplication::processEvents();
 }
 
 } // namespace
@@ -412,9 +434,8 @@ void TestDragGridWidget::escapeDuringDrag_restoresOriginalOrder()
     grid.setDragEnabled(true);
     QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
 
-    QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
-    // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
-    QTest::mouseMove(&grid, third->geometry().center() + QPoint(60, 0));
+    // 目标点需越过 cell 中心，避免 offscreen 取整导致占位符判断落在原 cell。
+    beginMouseDrag(&grid, first->geometry().center(), third->geometry().center() + QPoint(60, 0));
     QTest::keyClick(&grid, Qt::Key_Escape);
     QCoreApplication::processEvents();
 
@@ -434,9 +455,8 @@ void TestDragGridWidget::deleteWidget_duringDrag_removesDraggedWidget()
     grid.setDragEnabled(true);
     QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
 
-    QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
-    // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
-    QTest::mouseMove(&grid, second->geometry().center() + QPoint(60, 0));
+    // 目标点需越过 cell 中心，避免 offscreen 取整导致占位符判断落在原 cell。
+    beginMouseDrag(&grid, first->geometry().center(), second->geometry().center() + QPoint(60, 0));
     grid.deleteWidget(first);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     QCoreApplication::processEvents();
@@ -456,9 +476,8 @@ void TestDragGridWidget::setDragEnabled_falseDuringDrag_cancelsDrag()
     grid.setDragEnabled(true);
     QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
 
-    QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, first->geometry().center());
-    // 目标点需越过 cell 中心，避免 Qt 5.15.2 offscreen 取整导致占位符判断落在原 cell。
-    QTest::mouseMove(&grid, third->geometry().center() + QPoint(60, 0));
+    // 目标点需越过 cell 中心，避免 offscreen 取整导致占位符判断落在原 cell。
+    beginMouseDrag(&grid, first->geometry().center(), third->geometry().center() + QPoint(60, 0));
     grid.setDragEnabled(false);
     QCoreApplication::processEvents();
 
@@ -1343,9 +1362,8 @@ void TestDragGridWidget::escapeAfterExternalDelete_preservesOrder()
     grid.setDragEnabled(true);
     QSignalSpy orderSpy(&grid, &DragGridWidget::orderChanged);
 
-    QTest::mousePress(&grid, Qt::LeftButton, Qt::NoModifier, second->geometry().center());
-    QTest::mouseMove(&grid, third->geometry().center() + QPoint(60, 0));
-    QCoreApplication::processEvents();
+    // 起点为 second 本格中心，落点须越过 third 的 cell 中心进入其右侧。
+    beginMouseDrag(&grid, second->geometry().center(), third->geometry().center() + QPoint(60, 0));
 
     auto *layout = qobject_cast<YJDragGrid::DragGridLayout *>(grid.layout());
     QVERIFY(layout);

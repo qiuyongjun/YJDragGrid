@@ -99,7 +99,7 @@ See [docs/api.md](docs/api.md) for the public behavior contract.
 - `void addWidget(QWidget *widget)` — Append an item; `void insertWidget(int index, QWidget *widget)` — Insert an item by `widgets()` order, clamping out-of-range indices.
 - `void removeWidget(QWidget *widget)` / `void deleteWidget(QWidget *widget)` / `QWidget *takeWidget(int index)` — Remove items (`takeWidget` indexes by `widgets()` order).
 - `void clear()` — Remove and destroy all items.
-- `int count() const` / `QList<QWidget *> widgets() const` — Query current items; `count()` includes non-widget layout items.
+- `int count() const` / `QList<QWidget *> widgets() const` — Query current items; `count()` includes non-widget layout items, which occupy a grid slot as well.
 - `void orderChanged()` — Signal emitted when the user reorders items by dragging.
 - `void itemMoved(int from, int to)` — Signal emitted with the moved item's original and final index.
 - `void orderUpdated(const QList<QWidget *> &widgets)` — Signal emitted with the complete order after a user reorder.

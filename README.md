@@ -101,7 +101,7 @@ grid->addWidget(new MyCardWidget());
 - `void addWidget(QWidget *widget)` — 追加子控件；`void insertWidget(int index, QWidget *widget)` — 按 `widgets()` 顺序插入子控件，越界索引会收敛到有效范围。
 - `void removeWidget(QWidget *widget)` / `void deleteWidget(QWidget *widget)` / `QWidget *takeWidget(int index)` — 移除子控件（`takeWidget` 的索引按 `widgets()` 顺序）。
 - `void clear()` — 清空并销毁所有子控件。
-- `int count() const` — 布局项数量（含 spacer 等非 widget 项）；`QList<QWidget *> widgets() const` — 当前控件顺序。
+- `int count() const` — 布局项数量（含 spacer 等非 widget 项，它们同样占用网格槽位）；`QList<QWidget *> widgets() const` — 当前控件顺序。
 - `void orderChanged()` — 用户通过拖拽改变顺序时发出的信号。
 - `void itemMoved(int from, int to)` — 用户拖拽改变顺序后发出移动前后的索引（按 `widgets()` 顺序）。
 - `void orderUpdated(const QList<QWidget *> &widgets)` — 用户拖拽改变顺序后发出完整顺序。

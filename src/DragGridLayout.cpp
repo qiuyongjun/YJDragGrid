@@ -175,7 +175,9 @@ void DragGridLayout::setGeometry(const QRect &rect)
         }
 
         QWidget *widget = item->widget();
-        if (widget == m_ignoredWidget) {
+        // spacer 等非控件项同样占用槽位：rowCount()、minimumSize() 与拖拽
+        // 索引都按 m_items 序列计数，空闲时跳过它们会让拖拽前后槽位错位。
+        if (widget && widget == m_ignoredWidget) {
             continue;
         }
 
